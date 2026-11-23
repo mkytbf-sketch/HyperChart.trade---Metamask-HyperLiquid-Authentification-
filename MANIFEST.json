@@ -1,0 +1,258 @@
+{
+  "genereLe": "2026-11-23T16:15:17.878Z",
+  "commitSource": "3cd4a32b514895d418ca92d291354c9d7ed0f2f0",
+  "note": "Chaque fichier est la copie du commit commitSource (modifieDepuisCommit = false), sauf avertissement ci-dessus.",
+  "fichiers": [
+    {
+      "fichier": "src/hyperliquid.ts",
+      "source": "app/src/hyperliquid.ts",
+      "nature": "copie conforme",
+      "role": "Compte Hyperliquid : connexion MetaMask, agent de trading, signatures, ordres",
+      "sha256": "f0d7cb23e885d377ed25625933ad5f0515dc8a13cf8ef9584205eb1cc388d4a2",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/agent-vault.ts",
+      "source": "app/src/agent-vault.ts",
+      "nature": "copie conforme",
+      "role": "Coffre : chiffrement AES-GCM de la clé de l’agent (clé WebCrypto non exportable)",
+      "sha256": "f1ad64fa1a968908944d239658f13f6b5a7d0ad83c81fdc5da8fd002ba9925e0",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/partner.ts",
+      "source": "app/src/partner.ts",
+      "nature": "copie conforme",
+      "role": "Frais d’interface (builder code) et code de parrainage, fixés au build",
+      "sha256": "7b25eb8c9e9bcb22a9aa3e140858a367255cdc17b02ae6f6cde31b70d803d9f8",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/metamask-help.ts",
+      "source": "app/src/metamask-help.ts",
+      "nature": "copie conforme",
+      "role": "Bouton « Connecter MetaMask », texte d’aide et avertissement de risque",
+      "sha256": "b691de7703d6c1e7d265968a9040f7fb3d58675e07244ff31aeeb33671d19260",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/storage-keys.ts",
+      "source": "app/src/storage-keys.ts",
+      "nature": "copie conforme",
+      "role": "Clés du stockage local",
+      "sha256": "0bc95273da0331e2496d6fee4afc8d49f85ad8743a25db25a9643d061b70fda5",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/theme.ts",
+      "source": "app/src/theme.ts",
+      "nature": "copie conforme",
+      "role": "Dépendance de metamask-help.ts (adresse du site, échappement HTML)",
+      "sha256": "2194135b17a7afbaded88bdc3d1017d9f3935425e0ec76cd02ae46d2d8e16eda",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/format.ts",
+      "source": "app/src/format.ts",
+      "nature": "copie conforme",
+      "role": "Dépendance de hyperliquid.ts (formatage des montants et adresses)",
+      "sha256": "bf3b6260616c5c195fa2f17f4ffabc5e0c3298d338ba961b49934a32f6ed6c39",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/test-support/fake-socket.ts",
+      "source": "app/src/test-support/fake-socket.ts",
+      "nature": "copie conforme",
+      "role": "Support des tests (stockage en mémoire)",
+      "sha256": "72fda11624963a8b2f86f8367eac81f86c3bf322726ef0b704c3d07abe1a4e2f",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/trade-calc.ts",
+      "source": "app/src/trade-calc.ts",
+      "nature": "copie conforme",
+      "role": "Calculs du ticket et texte des confirmations d’ordres (actif, sens, taille, prix, avertissements)",
+      "sha256": "d1151eacbbc9a3194dd4543a0280b5ad20368026f864928b0c746ebe16040ff7",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/ticket.ts",
+      "source": "app/src/ticket.ts",
+      "nature": "copie conforme",
+      "role": "Dépendance de trade-calc.ts (taille, marge, risque du ticket)",
+      "sha256": "5a635c5afd97426c585ff006a0b20797d41bf196dba1a58ee0c0f961d281d5a9",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/trade-switch.ts",
+      "source": "app/src/trade-switch.ts",
+      "nature": "copie conforme",
+      "role": "Changement d’actif à chaud : gel du trading, confirmation annulée, lignes des ordres par actif",
+      "sha256": "4eb3f58230eed2e4508df6d3d3d53d7100fecff39ec559a06bbf9baebdce22c9",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/safe-html.ts",
+      "source": "app/src/safe-html.ts",
+      "nature": "copie conforme",
+      "role": "Gabarit HTML échappé par construction et politique Trusted Types « hyperchart » (seule écriture de HTML)",
+      "sha256": "e52f762cac228272bf3de5b08922d1c33869339fd6785d52401df6f03d6e4bb9",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/trade-calc.test.ts",
+      "source": "app/src/trade-calc.test.ts",
+      "nature": "copie conforme",
+      "role": "Tests des calculs du ticket et des confirmations",
+      "sha256": "0812cba815a4283af6e54e338a0a0090474a553e964dba006f7f75e44cd68d73",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/trade-confirm-asset.test.ts",
+      "source": "app/src/trade-confirm-asset.test.ts",
+      "nature": "copie conforme",
+      "role": "Tests : l’actif nommé dans chaque confirmation est celui de l’ordre envoyé",
+      "sha256": "bc669aba9df6ed3eaf3f08ffea0aa899c91bddb0ae0d8a66f23f20bc2fd15313",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/trade-switch.test.ts",
+      "source": "app/src/trade-switch.test.ts",
+      "nature": "copie conforme",
+      "role": "Tests du changement d’actif pendant une confirmation ou un envoi",
+      "sha256": "fca5107670184d3b4c85b4e45f66418a376b11a222c10e34d89a4bb234cc1da3",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/safe-html.test.ts",
+      "source": "app/src/safe-html.test.ts",
+      "nature": "copie conforme",
+      "role": "Tests du gabarit sûr (échappement, imbrication, refus d’une chaîne brute) et de la politique Trusted Types",
+      "sha256": "eedfba096cc91d38b4404fd7d6ca0d329f32b3f21ad39584d79b9122c75bd5ed",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/agent-vault.test.ts",
+      "source": "app/src/agent-vault.test.ts",
+      "nature": "copie conforme",
+      "role": "Tests du coffre et de la migration des clés en clair",
+      "sha256": "8e611839381ed36bf587c8b49d89e8e47f2cc4adde3a54720b2d954e71f5568b",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/partner.test.ts",
+      "source": "app/src/partner.test.ts",
+      "nature": "copie conforme",
+      "role": "Tests du frais d’interface",
+      "sha256": "f9ecdfc5ec689722d8b8266e6807ce7a21b2155e10ae3f62d3df04543bfc533c",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/trade-safety.test.ts",
+      "source": "app/src/trade-safety.test.ts",
+      "nature": "copie conforme",
+      "role": "Tests de sûreté des envois d’ordres",
+      "sha256": "69e175069a73751c6db0a826b3a5dd25c1d6ae15ee2ae1be8a30adf31e6d43a3",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/protect-sync.test.ts",
+      "source": "app/src/protect-sync.test.ts",
+      "nature": "copie conforme",
+      "role": "Tests des protections (stop loss, take profit)",
+      "sha256": "e2a24acdd5a01058723e7c0fa22720fb199dd2a57c4b765db0d8b4d389f73043",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/tp-split.test.ts",
+      "source": "app/src/tp-split.test.ts",
+      "nature": "copie conforme",
+      "role": "Tests du découpage des take profit",
+      "sha256": "6c434d86d1c2ff911679d9d493d576d6b5812bfeb62e954383c05d838511d032",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/trade-ui.ts",
+      "source": "app/src/trade-ui.ts",
+      "nature": "copie conforme",
+      "role": "Interface de trading : boutons qui déclenchent connexion, signatures, révocation (lecture seule, non compilé)",
+      "sha256": "7b9c92b8c40fc2ff0bde8ec5a35ce36f98dcb88bebf077c083676905b07b9629",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/ui/positions-panel.ts",
+      "source": "app/src/ui/positions-panel.ts",
+      "nature": "copie conforme",
+      "role": "Panneau des positions (renderPositions) : boutons Fermer, Point mort, Annuler (testé par trade-switch.test.ts)",
+      "sha256": "409e61888b449a41ba33287774e046c65517af1b0d423d5491e3000ef88ba415",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/ui/coin-logo.ts",
+      "source": "app/src/ui/coin-logo.ts",
+      "nature": "copie conforme",
+      "role": "Dépendance de positions-panel.ts (logo d’un actif, HTML échappé)",
+      "sha256": "dc9b6c55bbf052b82b8f93ba2ae663d8df76771da377a24d77149efb6b6f5aa0",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/ui/dom.ts",
+      "source": "app/src/ui/dom.ts",
+      "nature": "copie conforme",
+      "role": "Dépendance de positions-panel.ts (écritures du DOM, par safe-html.ts)",
+      "sha256": "2a478a65ab6f934919d223acef7e8d5d0184a00cddc0f0665b5fbd12dfebb9a0",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "contexte/security-headers.ts",
+      "source": "app/security-headers.ts",
+      "nature": "copie conforme",
+      "role": "CSP et en-têtes de sécurité de l’application en ligne (lecture seule, non compilé)",
+      "sha256": "8f014404c19ac33bc981e85f1c616e02092d059e985c75a6441ff6e4d30d1489",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "contexte/.env.example",
+      "source": "app/.env.example",
+      "nature": "copie conforme",
+      "role": "Variables du frais d’interface (sans valeurs)",
+      "sha256": "2ac474f9692e1569956407413cd56eed663509fb9a14cf1b1ef466ebc9c2e7bf",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/asset.ts",
+      "source": "app/src/asset.ts",
+      "nature": "SUBSTITUT",
+      "role": "Actif affiché (BTC) — remplace un module sans lien avec le portefeuille",
+      "sha256": "8d64101a71021f6a2bb46313d0e460fd5889638338cfb9848ecf4024b9c9f6f6"
+    },
+    {
+      "fichier": "src/wallet.test.ts",
+      "source": "app/src/core.test.ts",
+      "nature": "EXTRAIT",
+      "role": "Tests de la signature MetaMask, de la révocation et des comptes autorisés",
+      "sha256": "cce9f1349a3bfac30033d52c095b4c8e205a1fe6a871d86b9b3ee1aaa981005f"
+    },
+    {
+      "fichier": "src/chart.ts",
+      "source": "app/src/chart/shared.ts",
+      "nature": "EXTRAIT",
+      "role": "Type TradeLine lu par trade-switch.ts",
+      "sha256": "2f54b31f0263efb5c98197cb604da05af5a760068cc9aa972d8d9d8d86b7a196"
+    },
+    {
+      "fichier": "src/coin-picker.ts",
+      "source": "app/src/coin-picker.ts",
+      "nature": "SUBSTITUT",
+      "role": "rowPrice (copie) et chooseCoin (sans effet), lus par positions-panel.ts",
+      "sha256": "fae32c1d5d642fe6c2214785b530d2247ff69339baca11892ca4076bf4d90496"
+    },
+    {
+      "fichier": "src/ui/settings.ts",
+      "source": "app/src/ui/settings.ts",
+      "nature": "SUBSTITUT",
+      "role": "Type des réglages lus par positions-panel.ts",
+      "sha256": "0555fedff327e0ef0610f6b19cb9f5abf647b04ce876004d094ad6dd3f013836"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "hyperchart-metamask-audit",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Code de la connexion MetaMask et du trading Hyperliquid de HyperChart, publié pour audit",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "verify": "node verify-manifest.mjs"
+  },
+  "dependencies": {
+    "@nktkas/hyperliquid": "0.33.3",
+    "viem": "2.57.12"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0",
+    "@types/node": "^24.19.2"
+  }
+}
