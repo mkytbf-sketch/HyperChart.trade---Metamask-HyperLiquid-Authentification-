@@ -93,12 +93,17 @@ export function leverageBound(lev: unknown, max: number): number {
  * actifs : le levier enregistré est borné au maximum du contrat affiché (`maxLeverage`), jamais repris tel quel ;
  * `trade-ui.ts` le reborne dès que le maximum réel du contrat est lu chez Hyperliquid. La quantité de l'actif n'est
  * reprise qu'en unité de l'actif ; un ticket enregistré sans elle garde son montant en USDC.
+ *
+ * Audit ARC-05 (23/11/2026) : le ticket enregistre aussi l'actif (`coin`). Quand `coin` est donné, la quantité et
+ * l'unité de l'actif ne sont reprises que pour le même actif (100 saisi sur DOGE ne devient pas 100 BTC) ; un ticket
+ * d'un autre actif, ou ancien sans actif, repart en USDC avec son montant.
  */
-export function restoreTicket(json: string | null, maxLeverage = Infinity): Ticket {
+export function restoreTicket(json: string | null, maxLeverage = Infinity, coin?: string): Ticket {
   const d = DEFAULT_TICKET;
   try {
-    const saved = JSON.parse(json ?? '{}') as Partial<Ticket>;
-    const unit = saved.unit === 'btc' ? 'btc' : 'usdc';
+    const saved = JSON.parse(json ?? '{}') as Partial<Ticket> & { coin?: unknown };
+    const sameCoin = coin === undefined || saved.coin === coin;
+    const unit = saved.unit === 'btc' && sameCoin ? 'btc' : 'usdc';
     const qty = unit === 'btc' && typeof saved.qty === 'number' && saved.qty > 0 && Number.isFinite(saved.qty) ? saved.qty : null;
     return {
       usdc: saved.usdc && saved.usdc > 0 ? saved.usdc : d.usdc,

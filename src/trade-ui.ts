@@ -94,14 +94,16 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
   };
   let ticket: Ticket = { ...calc.DEFAULT_TICKET };
   try {
-    ticket = calc.restoreTicket(localStorage.getItem(TICKET_KEY));
+    // Audit ARC-05 : la quantité enregistrée n'est reprise que pour le même actif (clé commune à tous les actifs).
+    ticket = calc.restoreTicket(localStorage.getItem(TICKET_KEY), Infinity, asset.coin);
   } catch {
     /* stockage inaccessible : réglages par défaut */
   }
   const saveTicket = () => {
     try {
       const { usdc, qty, leverage, cross, side, type, unit, tpsl, riskPct } = ticket;
-      localStorage.setItem(TICKET_KEY, JSON.stringify({ usdc, qty, leverage, cross, side, type, unit, tpsl, riskPct }));
+      const coin = asset.coin;
+      localStorage.setItem(TICKET_KEY, JSON.stringify({ coin, usdc, qty, leverage, cross, side, type, unit, tpsl, riskPct }));
     } catch {
       /* rien */
     }
@@ -618,7 +620,7 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
         <div><dt>Disponible</dt><dd>${s.trade ? usd(Math.max(...s.trade.avail)) : s.withdrawable === null ? '—' : usd(s.withdrawable)}</dd></div>
       </dl>
       ${partnerHtml(hl)}${posHtml}${ordersHtml}${ticketHtml}${fillsHtml}
-      ${s.keyNote ? html`<p class="note hl-key-note">${s.keyNote}</p>` : ''}${orphanHtml(hl)}${intentsHtml(hl)}
+      ${s.keyNote ? html`<p class="note hl-key-note">${s.keyNote}</p>` : ''}${walletHtml(hl)}${orphanHtml(hl)}${intentsHtml(hl)}
       ${s.error ? html`<p class="hl-error">${s.error}</p>` : ''}`,
     );
     refreshTicket();
@@ -736,6 +738,20 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
     return html`<div class="hl-partner">
         <p><b>Agent toujours autorisé chez Hyperliquid ${until}</b>${a.address ? ` (${shortAddr(a.address)})` : ''} : ce navigateur n’a plus sa clé et ne peut plus trader avec, mais une copie de la clé le pourrait. Révoque-le (une signature MetaMask du compte), ou réactive le trading, ce qui le remplace.</p>
         <div class="hl-acts small"><button type="button" class="primary" data-act="revoke"${busy ? ' disabled' : ''}>Révoquer</button></div>
+      </div>`;
+  }
+
+  /**
+   * Audit S-02 (23/11/2026) : MetaMask expose un autre compte que le compte suivi (ordres et signatures gelés, bouton
+   * pour continuer avec le compte suivi), ou n'en expose plus aucun (simple remarque).
+   */
+  function walletHtml(hl: Hyperliquid): SafeHtml {
+    const note = hl.state.walletNote;
+    if (!note) return EMPTY_HTML;
+    if (!hl.walletMismatch) return html`<p class="note hl-key-note">${note}</p>`;
+    return html`<div class="hl-partner">
+        <p><b>Compte MetaMask différent</b> · ${note}</p>
+        <div class="hl-acts small"><button type="button" class="primary" data-act="wallet-continue"${busy ? ' disabled' : ''}>Continuer avec ${shortAddr(hl.state.address ?? '')}</button></div>
       </div>`;
   }
 
@@ -967,6 +983,7 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
     } else if (act === 'enable') void enableTrading(hl);
     else if (act === 'forget') void forgetAccount(hl);
     else if (act === 'revoke') void revokeOnly(hl);
+    else if (act === 'wallet-continue') hl.confirmWallet();
     else if (act === 'check-pending') void run(hl, 'Ordre en suspens', () => hl.checkPending(), 'account');
     else if (act === 'submit') void openEntry(hl, asset.coin, ticket.side === 'buy');
     else if (t.dataset.side) {

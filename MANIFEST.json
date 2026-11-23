@@ -1,6 +1,6 @@
 {
-  "genereLe": "2026-11-23T16:15:17.878Z",
-  "commitSource": "3cd4a32b514895d418ca92d291354c9d7ed0f2f0",
+  "genereLe": "2026-11-23T23:38:29.734Z",
+  "commitSource": "a709cb73eb87b097d253a8c37dfe27a3fc2c7027",
   "note": "Chaque fichier est la copie du commit commitSource (modifieDepuisCommit = false), sauf avertissement ci-dessus.",
   "fichiers": [
     {
@@ -8,7 +8,7 @@
       "source": "app/src/hyperliquid.ts",
       "nature": "copie conforme",
       "role": "Compte Hyperliquid : connexion MetaMask, agent de trading, signatures, ordres",
-      "sha256": "f0d7cb23e885d377ed25625933ad5f0515dc8a13cf8ef9584205eb1cc388d4a2",
+      "sha256": "b8710533091c074869651d3a3542dcf64849fc603de1b8fa414f4f69682c16d3",
       "modifieDepuisCommit": false
     },
     {
@@ -32,7 +32,7 @@
       "source": "app/src/metamask-help.ts",
       "nature": "copie conforme",
       "role": "Bouton « Connecter MetaMask », texte d’aide et avertissement de risque",
-      "sha256": "b691de7703d6c1e7d265968a9040f7fb3d58675e07244ff31aeeb33671d19260",
+      "sha256": "03fb2b832b35b88b5a748c3dd0f7c1044fc17a32774aea43bda9ad7999732fcd",
       "modifieDepuisCommit": false
     },
     {
@@ -72,7 +72,7 @@
       "source": "app/src/trade-calc.ts",
       "nature": "copie conforme",
       "role": "Calculs du ticket et texte des confirmations d’ordres (actif, sens, taille, prix, avertissements)",
-      "sha256": "d1151eacbbc9a3194dd4543a0280b5ad20368026f864928b0c746ebe16040ff7",
+      "sha256": "9f934b593be5c9b814a31ca118daf55f7cb231486969ed4630c3d242747f4318",
       "modifieDepuisCommit": false
     },
     {
@@ -96,7 +96,7 @@
       "source": "app/src/safe-html.ts",
       "nature": "copie conforme",
       "role": "Gabarit HTML échappé par construction et politique Trusted Types « hyperchart » (seule écriture de HTML)",
-      "sha256": "e52f762cac228272bf3de5b08922d1c33869339fd6785d52401df6f03d6e4bb9",
+      "sha256": "482f1b48f3403c7a53cb82f7cb33aa9d67d88c8cfdde0cb7faf21695d64a4e88",
       "modifieDepuisCommit": false
     },
     {
@@ -104,7 +104,7 @@
       "source": "app/src/trade-calc.test.ts",
       "nature": "copie conforme",
       "role": "Tests des calculs du ticket et des confirmations",
-      "sha256": "0812cba815a4283af6e54e338a0a0090474a553e964dba006f7f75e44cd68d73",
+      "sha256": "4bb5866238a402db3e84acd4b1be0398deac3feb1e79c711a5a821cb94676e0a",
       "modifieDepuisCommit": false
     },
     {
@@ -176,7 +176,7 @@
       "source": "app/src/trade-ui.ts",
       "nature": "copie conforme",
       "role": "Interface de trading : boutons qui déclenchent connexion, signatures, révocation (lecture seule, non compilé)",
-      "sha256": "7b9c92b8c40fc2ff0bde8ec5a35ce36f98dcb88bebf077c083676905b07b9629",
+      "sha256": "6863b99ec5937a83924d9df39adfca80b6dbc2023573c4d4c776ea9b1af42e23",
       "modifieDepuisCommit": false
     },
     {

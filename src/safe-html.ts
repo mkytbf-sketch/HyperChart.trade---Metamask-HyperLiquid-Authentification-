@@ -65,6 +65,21 @@ export function html(strings: TemplateStringsArray, ...values: HtmlValue[]): Saf
   return make(out);
 }
 
+/**
+ * Adresse de lien venue du serveur (facture…), admise seulement en `https:` absolu, sans identifiants (audit S-11,
+ * 23/11/2026) ; sinon null, et aucun lien n'est affiché. Écarte `javascript:`, `data:`, `http:`, les chemins
+ * relatifs et `//hôte`. Rend l'adresse normalisée par l'analyseur d'URL.
+ */
+export function httpsUrl(url: unknown): string | null {
+  if (typeof url !== 'string' || !/^https:\/\//i.test(url.trim())) return null;
+  try {
+    const u = new URL(url.trim());
+    return u.protocol === 'https:' && u.hostname && !u.username && !u.password ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Fragment vide (équivalent de html``). */
 export const EMPTY_HTML = html``;
 

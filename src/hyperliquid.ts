@@ -55,10 +55,12 @@ export const MIN_NOTIONAL = 10;
 export const AGENT_NAME = 'HyperDashboard';
 /**
  * Durée de validité de l'agent, en jours : passé ce délai, Hyperliquid le refuse d'office et une nouvelle signature
- * MetaMask est demandée. Une clé d'agent dérobée cesse ainsi d'être utilisable d'elle-même. 15 jours : compromis
- * entre le temps pendant lequel une clé volée resterait utilisable et la fréquence des signatures.
+ * MetaMask est demandée. Une clé d'agent dérobée cesse ainsi d'être utilisable d'elle-même. 7 jours (audit S-01,
+ * 23/11/2026, 15 jours avant) : compromis entre le temps pendant lequel une clé volée resterait utilisable et la
+ * fréquence des signatures. L'échéance est écrite chez Hyperliquid dans le nom de l'agent (`valid_until`) et gardée
+ * en absolu (`agentUntil`) : un agent approuvé avant le changement reste valable jusqu'à sa propre échéance.
  */
-export const AGENT_DAYS = 15;
+export const AGENT_DAYS = 7;
 const AGENT_TTL_MS = AGENT_DAYS * 86_400_000;
 /** Durée de validité de l'agent de remplacement posé par une révocation (sa clé n'existe plus : simple ménage). */
 const REVOKE_TTL_MS = 3_600_000;
@@ -338,6 +340,11 @@ export interface HlState {
    * indisponible dans ce navigateur) ou clé chiffrée devenue illisible. Null : rien à signaler.
    */
   keyNote: string | null;
+  /**
+   * Audit S-02 (23/11/2026) : remarque sur le compte que MetaMask expose à cette page quand ce n'est plus le compte
+   * suivi (ordres et signatures gelés jusqu'à confirmation), ou quand MetaMask est verrouillé ou déconnecté. Null : rien.
+   */
+  walletNote: string | null;
 }
 
 /**
@@ -804,8 +811,13 @@ export class Hyperliquid {
     maxLeverage: 40,
     error: null,
     keyNote: null,
+    walletNote: null,
   };
   private saved: Saved = {};
+  /** Audit S-02 : écouteurs de MetaMask posés (une fois par objet). */
+  private walletHooked = false;
+  /** Audit S-02 : MetaMask n'expose plus le compte suivi (autre compte choisi) : ordres et signatures gelés. */
+  private walletFrozen = false;
   /**
    * Lecture de la clé de l'agent au chargement (déchiffrement, ou migration d'une clé en clair) : asynchrone. Les
    * méthodes qui lisent ou réécrivent la connexion l'attendent ; tant qu'elle dure, le trading reste inactif.
@@ -884,7 +896,61 @@ export class Hyperliquid {
       this.saved = {};
     }
     this.keyLoad = this.loadKey();
+    this.listenWallet();
     if (this.saved.address) void this.watch(this.saved.address);
+  }
+
+  // ───────────── Événements de MetaMask (audit S-02, 23/11/2026) ─────────────
+
+  /**
+   * Écoute `accountsChanged` et `disconnect` du fournisseur, une fois par objet. `chainChanged` n'est pas écouté :
+   * chaque signature MetaMask relit le réseau au moment de signer (`getChainId`), et les ordres de l'agent ne passent
+   * pas par MetaMask. Le compte suivi n'est jamais changé ni oublié ici, et l'agent n'est jamais effacé.
+   */
+  private listenWallet(): void {
+    if (this.walletHooked || typeof window === 'undefined') return;
+    const eth = provider();
+    if (typeof eth?.on !== 'function') return;
+    this.walletHooked = true;
+    eth.on('accountsChanged', accounts => this.walletAccounts(accounts));
+    eth.on('disconnect', () => this.walletAccounts(null));
+  }
+
+  /**
+   * Comptes que MetaMask expose désormais à la page (`accountsChanged`) ; null : MetaMask déconnecté (`disconnect`).
+   *  - le compte suivi en fait partie : rien à signaler, un gel précédent est levé ;
+   *  - un autre compte seulement : ordres et signatures gelés, message clair, jusqu'au retour sur le compte suivi ou à
+   *    la confirmation (`confirmWallet`) ;
+   *  - aucun compte (MetaMask verrouillé, page déconnectée) : simple remarque, rien n'est gelé (les ordres passent par
+   *    l'agent du compte suivi, sans MetaMask ; une signature MetaMask redemandera le compte).
+   */
+  walletAccounts(accounts: unknown): void {
+    const followed = this.state.address;
+    const v = accounts === null ? 'none' : walletVerdict(accounts, followed);
+    if (!followed || v === 'ok') {
+      this.walletFrozen = false;
+      this.state.walletNote = null;
+    } else if (v === 'other') {
+      const shown = shortAddr(String((accounts as string[])[0]));
+      const mine = shortAddr(followed);
+      this.walletFrozen = true;
+      this.state.walletNote = `MetaMask est passé sur ${shown}, qui n’est pas le compte suivi ici (${mine}). Par sécurité, les ordres et signatures de ${mine} sont suspendus : reviens sur ${mine} dans MetaMask, ou confirme « Continuer avec ${mine} » dans la carte. L’autorisation de trading de ${mine} reste valable.`;
+    } else {
+      this.state.walletNote = `MetaMask est verrouillé ou n’expose plus ${shortAddr(followed)} à cette page : une signature MetaMask (activer, révoquer) le redemandera. Les ordres passent toujours par l’agent de ce compte.`;
+    }
+    this.emit();
+  }
+
+  /** Gel S-02 en cours : MetaMask expose un autre compte que le compte suivi. */
+  get walletMismatch(): boolean {
+    return this.walletFrozen;
+  }
+
+  /** « Continuer avec ce compte » : l'utilisateur confirme le compte suivi malgré le compte affiché par MetaMask. */
+  confirmWallet(): void {
+    this.walletFrozen = false;
+    this.state.walletNote = null;
+    this.emit();
   }
 
   // ───────────── Intentions d'envoi (réponses perdues) ─────────────
@@ -1132,6 +1198,7 @@ export class Hyperliquid {
   async connect(exclude: string[] = []): Promise<void> {
     const eth = provider();
     if (!eth) throw new Error('MetaMask n’est pas détecté dans ce navigateur.');
+    this.listenWallet();
     const picked = exclude.length ? await pickAccounts(eth) : [];
     const accounts = await permittedAccounts(eth, picked);
     if (!accounts.length) throw new Error('Aucun compte autorisé dans MetaMask.');
@@ -1259,7 +1326,9 @@ export class Hyperliquid {
       referredBy: null,
       error: null,
       keyNote: null,
+      walletNote: null,
     };
+    this.walletFrozen = false;
     this.emit();
   }
 
@@ -1293,6 +1362,9 @@ export class Hyperliquid {
       this.sealed = null;
       this.keptBox = null;
       this.verifiedAgent = null;
+      // Nouveau compte suivi, choisi par l'utilisateur : une remarque S-02 sur l'ancien n'a plus d'objet.
+      this.walletFrozen = false;
+      this.state.walletNote = null;
     }
     this.store();
     this.state = {
@@ -1851,6 +1923,11 @@ export class Hyperliquid {
     }
     const owner = wanted ?? accounts[0];
     if (!owner) throw new Error('Aucun compte autorisé dans MetaMask.');
+    // Le compte suivi est de nouveau connecté à la page (choisi par l'utilisateur au besoin) : gel S-02 levé.
+    if (this.walletFrozen || this.state.walletNote) {
+      this.walletFrozen = false;
+      this.state.walletNote = null;
+    }
     return owner;
   }
 
@@ -1902,13 +1979,19 @@ export class Hyperliquid {
     }
   }
 
-  private ready(coin: string): { ex: ExchangeClient; asset: Asset } {
+  /** `auto` : recalage automatique des protections (jamais gelé par S-02 : il protège la position du compte suivi). */
+  private ready(coin: string, auto = false): { ex: ExchangeClient; asset: Asset } {
     if (this.exchange && this.agentExpired()) {
       this.setupAgent();
       this.emit();
-      throw new Error(`L’autorisation de trading a expiré (${AGENT_DAYS} jours) : réactive le trading dans la carte Hyperliquid.`);
+      throw new Error('L’autorisation de trading a expiré : réactive le trading dans la carte Hyperliquid.');
     }
     if (!this.exchange) throw new Error('Trading non activé.');
+    // Audit S-02 : MetaMask a basculé sur un autre compte que celui suivi ; rien ne part sans confirmation.
+    if (this.walletFrozen && !auto)
+      throw new Error(
+        `MetaMask affiche un autre compte que ${shortAddr(this.state.address ?? '')} : rien n’a été envoyé. Reviens sur ce compte dans MetaMask, ou confirme « Continuer avec ${shortAddr(this.state.address ?? '')} » dans la carte Hyperliquid.`,
+      );
     // Contrat de l'actif pas encore lu (juste après un changement d'actif, ou lecture refusée) : rien ne part.
     if (!this.asset) {
       this.retryAsset();
@@ -2054,7 +2137,7 @@ export class Hyperliquid {
 
   private async syncNow(): Promise<void> {
     const coin = this.coin;
-    const { ex, asset } = this.ready(coin);
+    const { ex, asset } = this.ready(coin, true);
     await this.fresh();
     const pos = this.state.position;
     if (!pos) return;
@@ -2452,6 +2535,18 @@ async function permittedAccounts(eth: EIP1193Provider, extra: string[] = []): Pr
     /* portefeuille sans wallet_getPermissions : le compte affiché seul */
   }
   return [...new Set([...shown, ...extra, ...granted])];
+}
+
+/**
+ * Audit S-02 (23/11/2026) : verdict sur les comptes que MetaMask expose à la page (`accountsChanged`) au regard du
+ * compte suivi. `ok` : pas de compte suivi, ou il est exposé ; `other` : seulement d'autres comptes ; `none` : aucun
+ * compte (MetaMask verrouillé, page déconnectée).
+ */
+export function walletVerdict(accounts: unknown, followed: string | null): 'ok' | 'other' | 'none' {
+  if (!followed) return 'ok';
+  const list = Array.isArray(accounts) ? accounts.filter((a): a is string => typeof a === 'string').map(a => a.toLowerCase()) : [];
+  if (!list.length) return 'none';
+  return list.includes(followed.toLowerCase()) ? 'ok' : 'other';
 }
 
 function provider(): (EIP1193Provider & { on?: (event: string, cb: (accounts: string[]) => void) => void }) | undefined {

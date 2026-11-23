@@ -6,7 +6,7 @@ Ce dépôt contient **uniquement** le code de [HyperChart](https://hyperchart.tr
 connexion MetaMask, signatures demandées, portefeuille « agent » de trading Hyperliquid, garde de sa clé, frais
 d’interface et révocation. Le reste de l’application (graphiques, données de marché, compte utilisateur) n’y figure pas.
 
-Les fichiers sont des **copies conformes** de ceux de l’application, à la date du 2026-11-23 (commit privé `3cd4a32b514895d418ca92d291354c9d7ed0f2f0`).
+Les fichiers sont des **copies conformes** de ceux de l’application, à la date du 2026-11-23 (commit privé `a709cb73eb87b097d253a8c37dfe27a3fc2c7027`).
 L’export refuse de produire ce dépôt si un fichier diffère de ce commit. `MANIFEST.json` donne l’empreinte SHA-256 de
 chacun et signale les seules exceptions :
 
@@ -32,7 +32,7 @@ Ce qui est à vérifier en priorité, en plus de `src/hyperliquid.ts` :
 | Étape | Appel au portefeuille | Fenêtre MetaMask | Ce que ça permet |
 | --- | --- | --- | --- |
 | Connecter | `eth_requestAccounts`, `wallet_getPermissions` (et `wallet_requestPermissions` pour un 2ᵉ compte) | Choix du compte | Lire ton adresse publique. Aucune signature, aucune transaction. |
-| Activer le trading | `eth_signTypedData_v4` — type `HyperliquidTransaction:ApproveAgent` | Signature EIP-712 | Autoriser **pendant 15 jours** une clé « agent » créée dans ton navigateur à passer et annuler des ordres. |
+| Activer le trading | `eth_signTypedData_v4` — type `HyperliquidTransaction:ApproveAgent` | Signature EIP-712 | Autoriser **pendant 7 jours** une clé « agent » créée dans ton navigateur à passer et annuler des ordres. |
 | Frais d’interface (si configuré) | `eth_signTypedData_v4` — type `HyperliquidTransaction:ApproveBuilderFee` | Signature EIP-712 | Autoriser Hyperliquid à prélever le frais d’interface affiché, au plus au taux signé. |
 | Oublier / révoquer | `eth_signTypedData_v4` — `ApproveAgent` d’un agent jetable | Signature EIP-712 | Remplacer l’agent par un agent dont la clé est jetée : l’ancienne clé ne signe plus rien. |
 | — | `eth_chainId` | aucune | Lire le réseau pour construire la signature. |
@@ -50,7 +50,7 @@ réseau. Un agent Hyperliquid ne peut **ni retirer ni transférer** de fonds (r�
 - Gardée dans le `localStorage`, **chiffrée** en AES-GCM 256 bits (`src/agent-vault.ts`). La clé de chiffrement est une
   clé WebCrypto **non exportable** conservée dans IndexedDB ; le texte chiffré est lié à son emplacement (donnée
   authentifiée). Sans WebCrypto ou IndexedDB (certains modes privés), la clé reste en clair et l’interface le dit.
-- Validité de **15 jours** inscrite chez Hyperliquid dans le nom de l’agent (`valid_until`) : passé ce délai, elle ne
+- Validité de **7 jours** inscrite chez Hyperliquid dans le nom de l’agent (`valid_until`) : passé ce délai, elle ne
   signe plus rien, même volée.
 - « Oublier » révoque l’agent chez Hyperliquid avant d’effacer la clé locale.
 
@@ -70,7 +70,7 @@ réseau. Un agent Hyperliquid ne peut **ni retirer ni transférer** de fonds (r�
     politique de l’application, `hyperchart` (`src/safe-html.ts`). Elle n’accepte que des fragments fabriqués par le
     gabarit `html`…``, qui échappe chaque valeur interpolée ; aucune politique `default`. Un navigateur qui n’applique pas Trusted Types
     garde le même code échappé, sans le blocage par le navigateur ;
-  - durée limitée de l’agent (15 jours), révocation par « Oublier ».
+  - durée limitée de l’agent (7 jours), révocation par « Oublier ».
 - Qui détient la clé de l’agent ne peut pas retirer de fonds, mais peut **trader** pour le compte, donc lui faire
   perdre son solde par des ordres défavorables.
 - Le frais d’interface et le code de parrainage sont fixés au build (`src/partner.ts`, `contexte/.env.example`) ; le

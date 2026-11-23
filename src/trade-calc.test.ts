@@ -518,6 +518,19 @@ describe('Cas limites de la saisie', () => {
     expect(calc.restoreTicket(JSON.stringify({ unit: 'btc', qty: 'x' })).qty).toBeUndefined();
   });
 
+  it('DÉFAUT CORRIGÉ (audit ARC-05) : la quantité d’un autre actif n’est jamais reprise', () => {
+    const doge = JSON.stringify({ coin: 'DOGE', unit: 'btc', usdc: 250, qty: 100, leverage: 3 });
+    // Même actif : quantité et unité reprises.
+    expect(calc.restoreTicket(doge, Infinity, 'DOGE')).toMatchObject({ unit: 'btc', qty: 100, usdc: 250 });
+    // Autre actif : 100 DOGE ne devient pas 100 BTC ; le ticket repart en USDC avec son montant et son levier.
+    const btc = calc.restoreTicket(doge, Infinity, 'BTC');
+    expect(btc.qty).toBeUndefined();
+    expect(btc).toMatchObject({ unit: 'usdc', usdc: 250, leverage: 3 });
+    // Ancien ticket sans actif : la quantité est ignorée dès que l’actif affiché est connu.
+    const ancien = JSON.stringify({ unit: 'btc', usdc: 501, qty: 0.0042 });
+    expect(calc.restoreTicket(ancien, Infinity, 'BTC').qty).toBeUndefined();
+  });
+
   it('DÉFAUT CORRIGÉ (planTicket) : un montant en USDC qui tombe sur un pas exact donne ce pas', () => {
     // Avant : 501 USDC à 100 000 → floor(500,99999999999994) → 0,005.
     expect(Math.floor((501 / 100_000) * 1e5) / 1e5).toBe(0.005);

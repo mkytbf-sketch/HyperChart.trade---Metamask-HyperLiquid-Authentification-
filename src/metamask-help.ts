@@ -8,7 +8,7 @@ import { SITE } from './theme';
 
 const METAMASK_HELP =
   'Connecter MetaMask donne seulement ton adresse publique : aucune signature, aucune transaction, aucun accès à tes fonds. ' +
-  'Activer le trading demande ensuite une signature, affichée dans MetaMask avant validation. Elle autorise pendant 15 jours un agent à passer des ordres, sans jamais pouvoir retirer ni transférer de fonds.';
+  'Activer le trading demande ensuite une signature, affichée dans MetaMask avant validation. Elle autorise pendant 7 jours un agent à passer des ordres, sans jamais pouvoir retirer ni transférer de fonds.';
 
 /** Question de la FAQ, sur la version française du site (Q-13). */
 export const METAMASK_FAQ = `${SITE}/#metamask`;
