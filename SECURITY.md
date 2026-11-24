@@ -18,4 +18,4 @@ Une réponse est donnée sous 7 jours. Ce dépôt ne propose pas de prime aux bo
 ---
 
 **Reporting a vulnerability** — please do not open a public issue. Use GitHub private vulnerability reporting
-(*Security* tab → *Report a vulnerability*). We aim to reply within 7 days. No bug bounty is offered.
+(_Security_ tab → _Report a vulnerability_). We aim to reply within 7 days. No bug bounty is offered.

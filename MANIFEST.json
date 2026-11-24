@@ -1,6 +1,6 @@
 {
-  "genereLe": "2026-11-23T23:38:29.734Z",
-  "commitSource": "a709cb73eb87b097d253a8c37dfe27a3fc2c7027",
+  "genereLe": "2026-11-24T09:17:11.140Z",
+  "commitSource": "11e56bbfed0bc2b300135c7d8a50fc616896bace",
   "note": "Chaque fichier est la copie du commit commitSource (modifieDepuisCommit = false), sauf avertissement ci-dessus.",
   "fichiers": [
     {
@@ -8,7 +8,7 @@
       "source": "app/src/hyperliquid.ts",
       "nature": "copie conforme",
       "role": "Compte Hyperliquid : connexion MetaMask, agent de trading, signatures, ordres",
-      "sha256": "b8710533091c074869651d3a3542dcf64849fc603de1b8fa414f4f69682c16d3",
+      "sha256": "b09a4eb8ebddf68807fadf1d69a2716875c6ec7b5eaafa4c6639b29f9081113e",
       "modifieDepuisCommit": false
     },
     {
@@ -128,7 +128,7 @@
       "source": "app/src/safe-html.test.ts",
       "nature": "copie conforme",
       "role": "Tests du gabarit sûr (échappement, imbrication, refus d’une chaîne brute) et de la politique Trusted Types",
-      "sha256": "eedfba096cc91d38b4404fd7d6ca0d329f32b3f21ad39584d79b9122c75bd5ed",
+      "sha256": "b7cd7ad3742c8df700174d67d5d18a2f9ffc65ed3b5cc718d232fc57400f58a1",
       "modifieDepuisCommit": false
     },
     {
@@ -152,7 +152,7 @@
       "source": "app/src/trade-safety.test.ts",
       "nature": "copie conforme",
       "role": "Tests de sûreté des envois d’ordres",
-      "sha256": "69e175069a73751c6db0a826b3a5dd25c1d6ae15ee2ae1be8a30adf31e6d43a3",
+      "sha256": "1cfa8af620ee19aa7d33290209649ef4aa8d21f721cfd16be1a4fe02e65254bf",
       "modifieDepuisCommit": false
     },
     {
@@ -176,7 +176,7 @@
       "source": "app/src/trade-ui.ts",
       "nature": "copie conforme",
       "role": "Interface de trading : boutons qui déclenchent connexion, signatures, révocation (lecture seule, non compilé)",
-      "sha256": "6863b99ec5937a83924d9df39adfca80b6dbc2023573c4d4c776ea9b1af42e23",
+      "sha256": "4e20d93b6113af52648ab7645a4e78692b58f2b89cf1dd8f7614790d9d0fabd6",
       "modifieDepuisCommit": false
     },
     {
@@ -208,7 +208,7 @@
       "source": "app/security-headers.ts",
       "nature": "copie conforme",
       "role": "CSP et en-têtes de sécurité de l’application en ligne (lecture seule, non compilé)",
-      "sha256": "8f014404c19ac33bc981e85f1c616e02092d059e985c75a6441ff6e4d30d1489",
+      "sha256": "ef7a9f225944a92d42ed4c826dbdca068cc6a6ca3875c23d2308bed60c003446",
       "modifieDepuisCommit": false
     },
     {

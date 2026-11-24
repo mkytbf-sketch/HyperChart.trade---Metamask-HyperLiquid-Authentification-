@@ -44,6 +44,11 @@ import { asSealed, openSecret, sealSecret, vaultAvailable, type SealedSecret } f
 
 /** Écart toléré par un ordre au marché par rapport au milieu du carnet. */
 export const MARKET_SLIPPAGE = 0.01;
+/**
+ * Écart maximal entre le prix montré dans la confirmation d'un ordre au marché et le prix relu juste avant l'envoi
+ * (audit H-02, 24/11/2026) : au-delà, l'ordre est refusé avant tout envoi et doit être reconfirmé.
+ */
+export const CONFIRM_DRIFT = 0.005;
 /** Écart toléré à l'exécution d'un stop ou d'un take profit déclenché (ordre au marché). */
 const TRIGGER_SLIPPAGE = 0.1;
 /** Valeur minimale d'un ordre sur Hyperliquid, en dollars. */
@@ -397,6 +402,24 @@ interface Asset extends AssetBase {
  * Ordre refusé avant tout envoi : il visait un autre actif que celui du compte ou que celui affiché (changement
  * d'actif pendant sa préparation). Rien n'est parti.
  */
+/** Prix trop éloigné de celui de la confirmation (ordre au marché) : refusé avant tout envoi, à reconfirmer. */
+export class PriceMovedError extends Error {
+  constructor(
+    readonly expected: number,
+    readonly mid: number,
+  ) {
+    const pct = (Math.abs(mid / expected - 1) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+    super(`Le prix a bougé de ${pct} % depuis la confirmation : rien n’a été envoyé. Vérifie le nouveau prix et reconfirme l’ordre.`);
+    this.name = 'PriceMovedError';
+  }
+}
+
+/** Refuse l'ordre au marché si le prix frais s'écarte de plus de `CONFIRM_DRIFT` du prix confirmé (sans prix confirmé : rien). */
+export function checkConfirmedPrice(expected: number | null | undefined, mid: number): void {
+  if (!expected || !(expected > 0)) return;
+  if (Math.abs(mid / expected - 1) > CONFIRM_DRIFT) throw new PriceMovedError(expected, mid);
+}
+
 export class CoinChangedError extends Error {
   constructor(
     readonly wanted: string,
@@ -2064,15 +2087,17 @@ export class Hyperliquid {
     });
   }
 
-  market(coin: string, buy: boolean, size: number, reduceOnly = false): Promise<string> {
-    return this.act(false, () => this.marketNow(coin, buy, size, reduceOnly));
+  /** `expectedMid` : prix montré dans la confirmation ; s'il est donné, un écart de plus de `CONFIRM_DRIFT` refuse l'ordre. */
+  market(coin: string, buy: boolean, size: number, reduceOnly = false, expectedMid?: number | null): Promise<string> {
+    return this.act(false, () => this.marketNow(coin, buy, size, reduceOnly, expectedMid));
   }
 
-  private async marketNow(coin: string, buy: boolean, size: number, reduceOnly = false): Promise<string> {
+  private async marketNow(coin: string, buy: boolean, size: number, reduceOnly = false, expectedMid?: number | null): Promise<string> {
     const { ex, asset } = this.ready(coin);
     if (!reduceOnly) await this.feeGate();
     await this.fresh();
     if (!this.state.mid) throw new Error('Prix Hyperliquid inconnu pour l’instant.');
+    checkConfirmedPrice(expectedMid, this.state.mid);
     const st = await this.send(
       ex,
       {
@@ -2324,7 +2349,7 @@ export class Hyperliquid {
     coin: string,
     buy: boolean,
     size: number,
-    opts: { price?: number | null; tp?: number | null; sl?: number | null; reduce?: boolean },
+    opts: { price?: number | null; tp?: number | null; sl?: number | null; reduce?: boolean; expectedMid?: number | null },
   ): Promise<string> {
     return this.act(false, () => this.enterNow(coin, buy, size, opts));
   }
@@ -2333,7 +2358,7 @@ export class Hyperliquid {
     coin: string,
     buy: boolean,
     size: number,
-    opts: { price?: number | null; tp?: number | null; sl?: number | null; reduce?: boolean },
+    opts: { price?: number | null; tp?: number | null; sl?: number | null; reduce?: boolean; expectedMid?: number | null },
   ): Promise<string> {
     const { ex, asset } = this.ready(coin);
     if (opts.reduce) {
@@ -2350,7 +2375,7 @@ export class Hyperliquid {
         );
         return describe(st[0]);
       }
-      return this.marketNow(coin, buy, size, true);
+      return this.marketNow(coin, buy, size, true, opts.expectedMid);
     }
     await this.feeGate();
     if (opts.price) {
@@ -2366,6 +2391,8 @@ export class Hyperliquid {
     }
     await this.fresh();
     if (!this.state.mid) throw new Error('Prix Hyperliquid inconnu pour l’instant.');
+    // Prix montré dans la confirmation : un saut depuis refuse l'ordre avant tout envoi (audit H-02).
+    checkConfirmedPrice(opts.expectedMid, this.state.mid);
     const before = this.state.position?.size ?? 0;
     // Le TP et le SL d'une entrée au marché sont posés sur la position obtenue. Si l'ordre ne fait que réduire la
     // position ouverte, ils seraient ceux du sens opposé appliqués à ce qu'il en reste : refusé avant tout envoi.

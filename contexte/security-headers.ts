@@ -86,7 +86,6 @@ export function contentPolicy(extra?: ExtraOrigins, header = false): string {
   ].join('; ');
 }
 
-
 /** En-têtes envoyés avec chaque réponse du site. */
 export function securityHeaders(relay?: ExtraOrigins): [name: string, value: string][] {
   return [

@@ -1,26 +1,26 @@
 # HyperChart — code de la connexion MetaMask, publié pour audit
 
-*English summary below.*
+_English summary below._
 
 Ce dépôt contient **uniquement** le code de [HyperChart](https://hyperchart.trade) qui touche à ton portefeuille :
 connexion MetaMask, signatures demandées, portefeuille « agent » de trading Hyperliquid, garde de sa clé, frais
 d’interface et révocation. Le reste de l’application (graphiques, données de marché, compte utilisateur) n’y figure pas.
 
-Les fichiers sont des **copies conformes** de ceux de l’application, à la date du 2026-11-23 (commit privé `a709cb73eb87b097d253a8c37dfe27a3fc2c7027`).
+Les fichiers sont des **copies conformes** de ceux de l’application, à la date du 2026-11-24 (commit privé `11e56bbfed0bc2b300135c7d8a50fc616896bace`).
 L’export refuse de produire ce dépôt si un fichier diffère de ce commit. `MANIFEST.json` donne l’empreinte SHA-256 de
 chacun et signale les seules exceptions :
 
-| Fichier | Nature |
-| --- | --- |
-| `src/asset.ts` | **Substitut** : le vrai module charge la liste des marchés et n’a aucun lien avec le portefeuille. |
+| Fichier                                    | Nature                                                                                                                                                                |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/asset.ts`                             | **Substitut** : le vrai module charge la liste des marchés et n’a aucun lien avec le portefeuille.                                                                    |
 | `src/coin-picker.ts`, `src/ui/settings.ts` | **Substituts** : liste des actifs et réglages de l’interface ; seul ce que lit le panneau des positions (`rowPrice`, recopiée telle quelle ; deux champs de réglage). |
-| `src/chart.ts` | **Extrait** : le seul type `TradeLine` (lignes des ordres), recopié de `src/chart/shared.ts`. |
-| `src/wallet.test.ts` | **Extrait** des tests de l’application : les blocs consacrés à MetaMask, recopiés tels quels. |
+| `src/chart.ts`                             | **Extrait** : le seul type `TradeLine` (lignes des ordres), recopié de `src/chart/shared.ts`.                                                                         |
+| `src/wallet.test.ts`                       | **Extrait** des tests de l’application : les blocs consacrés à MetaMask, recopiés tels quels.                                                                         |
 
 Ce qui est à vérifier en priorité, en plus de `src/hyperliquid.ts` :
 
 - `src/trade-calc.ts` construit le texte de **chaque fenêtre de confirmation** (titre, ligne « Actif », sens, taille,
-  prix, avertissements) à partir des valeurs de l’ordre envoyé : *actif affiché = actif envoyé*
+  prix, avertissements) à partir des valeurs de l’ordre envoyé : _actif affiché = actif envoyé_
   (`src/trade-confirm-asset.test.ts`).
 - `src/trade-switch.ts` : changement d’actif pendant une confirmation ou un envoi (gel, confirmation annulée).
 - `src/ui/positions-panel.ts` (`renderPositions`) : chaque bouton Fermer / Point mort / Annuler porte l’actif de sa
@@ -29,13 +29,13 @@ Ce qui est à vérifier en priorité, en plus de `src/hyperliquid.ts` :
 
 ## Ce que fait MetaMask dans HyperChart
 
-| Étape | Appel au portefeuille | Fenêtre MetaMask | Ce que ça permet |
-| --- | --- | --- | --- |
-| Connecter | `eth_requestAccounts`, `wallet_getPermissions` (et `wallet_requestPermissions` pour un 2ᵉ compte) | Choix du compte | Lire ton adresse publique. Aucune signature, aucune transaction. |
-| Activer le trading | `eth_signTypedData_v4` — type `HyperliquidTransaction:ApproveAgent` | Signature EIP-712 | Autoriser **pendant 7 jours** une clé « agent » créée dans ton navigateur à passer et annuler des ordres. |
-| Frais d’interface (si configuré) | `eth_signTypedData_v4` — type `HyperliquidTransaction:ApproveBuilderFee` | Signature EIP-712 | Autoriser Hyperliquid à prélever le frais d’interface affiché, au plus au taux signé. |
-| Oublier / révoquer | `eth_signTypedData_v4` — `ApproveAgent` d’un agent jetable | Signature EIP-712 | Remplacer l’agent par un agent dont la clé est jetée : l’ancienne clé ne signe plus rien. |
-| — | `eth_chainId` | aucune | Lire le réseau pour construire la signature. |
+| Étape                            | Appel au portefeuille                                                                             | Fenêtre MetaMask  | Ce que ça permet                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------- |
+| Connecter                        | `eth_requestAccounts`, `wallet_getPermissions` (et `wallet_requestPermissions` pour un 2ᵉ compte) | Choix du compte   | Lire ton adresse publique. Aucune signature, aucune transaction.                                          |
+| Activer le trading               | `eth_signTypedData_v4` — type `HyperliquidTransaction:ApproveAgent`                               | Signature EIP-712 | Autoriser **pendant 7 jours** une clé « agent » créée dans ton navigateur à passer et annuler des ordres. |
+| Frais d’interface (si configuré) | `eth_signTypedData_v4` — type `HyperliquidTransaction:ApproveBuilderFee`                          | Signature EIP-712 | Autoriser Hyperliquid à prélever le frais d’interface affiché, au plus au taux signé.                     |
+| Oublier / révoquer               | `eth_signTypedData_v4` — `ApproveAgent` d’un agent jetable                                        | Signature EIP-712 | Remplacer l’agent par un agent dont la clé est jetée : l’ancienne clé ne signe plus rien.                 |
+| —                                | `eth_chainId`                                                                                     | aucune            | Lire le réseau pour construire la signature.                                                              |
 
 **Jamais demandé** : `eth_sendTransaction`, `personal_sign`, transfert, retrait, approbation de jeton, changement de
 réseau. Un agent Hyperliquid ne peut **ni retirer ni transférer** de fonds (règle du protocole, pas de HyperChart).
@@ -147,7 +147,6 @@ elle-même est faite par qui a accès au dépôt privé (auditeur mandaté) ; la
 Chaque version déployée porte un tag git **signé** (`v2026.11.23-1`, …) sur le commit indiqué dans son manifeste ;
 `git tag -v` en vérifie la signature avec la clé publique de l’éditeur (publiée sur son compte GitHub). Un tag non
 signé ou un commit différent de celui du manifeste est un écart à signaler.
-
 
 ## Signaler une faille
 

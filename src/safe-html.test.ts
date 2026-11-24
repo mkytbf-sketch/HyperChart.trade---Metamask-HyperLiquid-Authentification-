@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { EMPTY_HTML, html, insertHtml, joinHtml, resetPolicyForTests, SafeHtml, scriptUrl, setHtml, TRUSTED_TYPES_POLICY } from './safe-html';
+import {
+  EMPTY_HTML,
+  html,
+  insertHtml,
+  joinHtml,
+  resetPolicyForTests,
+  SafeHtml,
+  scriptUrl,
+  setHtml,
+  TRUSTED_TYPES_POLICY,
+} from './safe-html';
 
 /** Élément simulé : seules les écritures de HTML comptent ici. */
 const fakeEl = () => {
@@ -78,7 +88,10 @@ describe('écriture et politique Trusted Types', () => {
       createPolicy: (name: string, r: typeof rules) => {
         created.push(name);
         rules = r;
-        return { createHTML: (s: string) => ({ trusted: r!.createHTML(s) }), createScriptURL: (s: string) => ({ url: r!.createScriptURL(s) }) };
+        return {
+          createHTML: (s: string) => ({ trusted: r!.createHTML(s) }),
+          createScriptURL: (s: string) => ({ url: r!.createScriptURL(s) }),
+        };
       },
     });
     const el = fakeEl();

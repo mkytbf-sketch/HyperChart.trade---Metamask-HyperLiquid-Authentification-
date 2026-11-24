@@ -2,7 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { ExchangeClient } from '@nktkas/hyperliquid';
 import { privateKeyToAccount } from 'viem/accounts';
 import { memoryStorage } from './test-support/fake-socket';
-import { describeBracket, describeFound, entryCloid, Hyperliquid, orderStatuses, PendingOrderError, tpCloid } from './hyperliquid';
+import {
+  describeBracket,
+  describeFound,
+  entryCloid,
+  Hyperliquid,
+  orderStatuses,
+  PendingOrderError,
+  PriceMovedError,
+  tpCloid,
+} from './hyperliquid';
 
 const ADDRESS = '0x1111111111111111111111111111111111111111';
 const ASSET = { coin: 'BTC', index: 0, szDecimals: 5, maxLeverage: 40 };
@@ -241,5 +250,38 @@ describe('T4 · remplacement du take profit', () => {
     const orders = async () => [raw(1, 0.1, 98_000, { isTrigger: false, orderType: 'Limit', cloid: tpCloid('full') })];
     const hl = account({ modify, order }, { clearinghouseState: position, frontendOpenOrders: orders });
     await expect(hl.partialTp('BTC', 97_000, 0.04)).rejects.toThrow(/TP complet n’a pas pu être rétabli/);
+  });
+});
+
+describe('T5 · prix confirmé d’un ordre au marché (audit H-02)', () => {
+  /** Compte dont le prix est périmé : `fresh()` relit un prix qui a sauté depuis la confirmation. */
+  function jumped(mid: string, order: (...a: unknown[]) => unknown) {
+    const hl = account({ order }, { allMids: async () => ({ BTC: mid }) });
+    (hl as unknown as Record<string, unknown>).midAt = 0;
+    return hl;
+  }
+  const FILLED = {
+    status: 'ok',
+    response: { type: 'order', data: { statuses: [{ filled: { totalSz: '0.001', avgPx: '100000', oid: 1 } }] } },
+  };
+
+  it('saut de prix entre la confirmation et fresh() : aucun envoi', async () => {
+    const order = vi.fn(async () => FILLED);
+    const hl = jumped('101000', order);
+    await expect(hl.enter('BTC', true, 0.001, { expectedMid: 100_000 })).rejects.toBeInstanceOf(PriceMovedError);
+    await expect(hl.enter('BTC', true, 0.001, { expectedMid: 100_000 })).rejects.toThrow(/a bougé de 1 % .*rien n’a été envoyé/);
+    // Même garde sur l'ordre réduisant seulement au marché, et sur market().
+    await expect(hl.enter('BTC', false, 0.001, { reduce: true, expectedMid: 100_000 })).rejects.toBeInstanceOf(PriceMovedError);
+    await expect(hl.market('BTC', true, 0.001, false, 100_000)).rejects.toBeInstanceOf(PriceMovedError);
+    expect(order).not.toHaveBeenCalled();
+  });
+
+  it('écart sous 0,5 % ou sans prix confirmé : l’ordre part', async () => {
+    const order = vi.fn(async () => FILLED);
+    await jumped('100400', order).enter('BTC', true, 0.001, { expectedMid: 100_000 });
+    expect(order).toHaveBeenCalledTimes(1);
+    // Appels sans prix confirmé (fermeture de position…) : comportement inchangé.
+    await jumped('105000', order).market('BTC', false, 0.001, true);
+    expect(order).toHaveBeenCalledTimes(2);
   });
 });

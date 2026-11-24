@@ -12,6 +12,7 @@ import {
   message,
   MIN_NOTIONAL,
   PendingOrderError,
+  PriceMovedError,
   UnprotectedError,
   type HlOrder,
 } from './hyperliquid';
@@ -247,8 +248,8 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
         const todo = `${err.missing.join(' ; ')}. Pose-le maintenant (clic droit sur le graphique) ou ferme la position.`;
         hl.state.error = `${label} exécuté, protection manquante : ${todo}`;
         toast(`${title} : EXÉCUTÉ, protection manquante`, `${err.done}. ${todo} Ne renvoie pas l’ordre : la position est ouverte.`);
-      } else if (err instanceof CoinChangedError) {
-        // Refusé avant tout envoi : l'actif affiché a changé pendant la préparation.
+      } else if (err instanceof CoinChangedError || err instanceof PriceMovedError) {
+        // Refusé avant tout envoi : l'actif affiché a changé, ou le prix a trop bougé depuis la confirmation.
         hl.state.error = null;
         toast(`${title} : non envoyé`, message(err));
       } else if (err instanceof PendingOrderError) {
@@ -330,7 +331,8 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
         if (at === undefined) ticket.limitPx = null;
       };
       try {
-        const text = await hl.enter(coin, buy, pl.size, { price: limit ? entry : null, tp, sl, reduce });
+        // Au marché, le prix confirmé accompagne l'ordre : s'il a bougé de plus de 0,5 % d'ici l'envoi, refus.
+        const text = await hl.enter(coin, buy, pl.size, { price: limit ? entry : null, tp, sl, reduce, expectedMid: limit ? null : entry });
         sent();
         return text;
       } catch (err) {
