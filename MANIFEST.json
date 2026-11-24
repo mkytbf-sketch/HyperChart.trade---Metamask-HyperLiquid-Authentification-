@@ -1,6 +1,6 @@
 {
-  "genereLe": "2026-11-24T09:17:11.140Z",
-  "commitSource": "11e56bbfed0bc2b300135c7d8a50fc616896bace",
+  "genereLe": "2026-11-24T12:28:09.833Z",
+  "commitSource": "0988f87a39fc88f1a8c7ed035f713114be265843",
   "note": "Chaque fichier est la copie du commit commitSource (modifieDepuisCommit = false), sauf avertissement ci-dessus.",
   "fichiers": [
     {
@@ -8,7 +8,63 @@
       "source": "app/src/hyperliquid.ts",
       "nature": "copie conforme",
       "role": "Compte Hyperliquid : connexion MetaMask, agent de trading, signatures, ordres",
-      "sha256": "b09a4eb8ebddf68807fadf1d69a2716875c6ec7b5eaafa4c6639b29f9081113e",
+      "sha256": "e087729c6758cd599bc380e989cb235fc939112fc0370bef09d158a101dfecac",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/hl-metamask.ts",
+      "source": "app/src/hl-metamask.ts",
+      "nature": "copie conforme",
+      "role": "Dialogue avec MetaMask : signataire de l’autorisation de l’agent, comptes connectés",
+      "sha256": "45eac3769b390a410d24f41158195f13ffe72d2201741e808e5ed44ada719b16",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/hl-agent.ts",
+      "source": "app/src/hl-agent.ts",
+      "nature": "copie conforme",
+      "role": "Agent de trading : nom, validité, révocation par remplacement, état chez Hyperliquid, connexion gardée",
+      "sha256": "920a93af5bf402120f01f4fb3bf6a54306fb84a4a810e21d59fff8e60fa98fdc",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/hl-wires.ts",
+      "source": "app/src/hl-wires.ts",
+      "nature": "copie conforme",
+      "role": "Construction des ordres envoyés (fils d’ordre, arrondis, identifiants clients)",
+      "sha256": "c08d35831132986d7620a0b7b155483fa77fa04da9cff682d51bd46ddbe0de76",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/hl-orders.ts",
+      "source": "app/src/hl-orders.ts",
+      "nature": "copie conforme",
+      "role": "Lecture des ordres ouverts publiés et recalage des protections",
+      "sha256": "4f02b8af5221e3a48ff3e23925da24fa91078d4dbe91803c488d66599c14d748",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/hl-intents.ts",
+      "source": "app/src/hl-intents.ts",
+      "nature": "copie conforme",
+      "role": "Intentions d’envoi (réponses perdues) : échéances et stockage local",
+      "sha256": "f8ebc8c2d73287fa0c7eaa6757df68aa62d4dafe50dcf1d58b5ce1b5e525760c",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/hl-errors.ts",
+      "source": "app/src/hl-errors.ts",
+      "nature": "copie conforme",
+      "role": "Erreurs et comptes rendus du trading (réponses perdues, prix ou actif changés)",
+      "sha256": "ddc027a236c60be2804cc0cab47c6ec42131a75706bf6a7227ecaa81c204118a",
+      "modifieDepuisCommit": false
+    },
+    {
+      "fichier": "src/hl-types.ts",
+      "source": "app/src/hl-types.ts",
+      "nature": "copie conforme",
+      "role": "Types du compte (positions, ordres, état publié, contrats)",
+      "sha256": "0f64c6d9a096c1d8cae838753a4d28b8eca1c32db04fb9fabcaf4144ff71997c",
       "modifieDepuisCommit": false
     },
     {
@@ -96,7 +152,7 @@
       "source": "app/src/safe-html.ts",
       "nature": "copie conforme",
       "role": "Gabarit HTML échappé par construction et politique Trusted Types « hyperchart » (seule écriture de HTML)",
-      "sha256": "482f1b48f3403c7a53cb82f7cb33aa9d67d88c8cfdde0cb7faf21695d64a4e88",
+      "sha256": "6de5ba0f5f3820a9a7931127003eed3f6799d59f743e16e270c85dd383de0202",
       "modifieDepuisCommit": false
     },
     {
@@ -152,7 +208,7 @@
       "source": "app/src/trade-safety.test.ts",
       "nature": "copie conforme",
       "role": "Tests de sûreté des envois d’ordres",
-      "sha256": "1cfa8af620ee19aa7d33290209649ef4aa8d21f721cfd16be1a4fe02e65254bf",
+      "sha256": "6006d9bee69700527a7e94a2f59f4da2d3c591a2bb4a71429d7d98d4fd99fd31",
       "modifieDepuisCommit": false
     },
     {
@@ -176,7 +232,7 @@
       "source": "app/src/trade-ui.ts",
       "nature": "copie conforme",
       "role": "Interface de trading : boutons qui déclenchent connexion, signatures, révocation (lecture seule, non compilé)",
-      "sha256": "4e20d93b6113af52648ab7645a4e78692b58f2b89cf1dd8f7614790d9d0fabd6",
+      "sha256": "894f886fdbe7493e9df971e19a1856b59085d532d7a9ef491ec1f8c3bcd5a331",
       "modifieDepuisCommit": false
     },
     {

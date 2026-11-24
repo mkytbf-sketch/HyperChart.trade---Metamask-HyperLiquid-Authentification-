@@ -6,7 +6,7 @@ Ce dépôt contient **uniquement** le code de [HyperChart](https://hyperchart.tr
 connexion MetaMask, signatures demandées, portefeuille « agent » de trading Hyperliquid, garde de sa clé, frais
 d’interface et révocation. Le reste de l’application (graphiques, données de marché, compte utilisateur) n’y figure pas.
 
-Les fichiers sont des **copies conformes** de ceux de l’application, à la date du 2026-11-24 (commit privé `11e56bbfed0bc2b300135c7d8a50fc616896bace`).
+Les fichiers sont des **copies conformes** de ceux de l’application, à la date du 2026-11-24 (commit privé `0988f87a39fc88f1a8c7ed035f713114be265843`).
 L’export refuse de produire ce dépôt si un fichier diffère de ce commit. `MANIFEST.json` donne l’empreinte SHA-256 de
 chacun et signale les seules exceptions :
 
@@ -41,7 +41,7 @@ Ce qui est à vérifier en priorité, en plus de `src/hyperliquid.ts` :
 réseau. Un agent Hyperliquid ne peut **ni retirer ni transférer** de fonds (règle du protocole, pas de HyperChart).
 
 À vérifier dans le code : `metamaskSigner`, `permittedAccounts`, `pickAccounts`, `connect`, `connectedOwner`,
-`enableTrading`, `approveBuilder`, `revokeAgent`, `revokeNamedAgent` (tous dans `src/hyperliquid.ts`).
+`enableTrading`, `approveBuilder`, `revokeAgent`, `revokeNamedAgent` (méthodes de la classe dans `src/hyperliquid.ts` ; `revokeNamedAgent` dans `src/hl-agent.ts`, réexporté par `src/hyperliquid.ts`).
 
 ## La clé de l’agent
 

@@ -88,15 +88,6 @@ export function joinHtml(parts: readonly SafeHtml[], separator: SafeHtml = EMPTY
   return make(parts.map(p => p.toString()).join(separator.toString()));
 }
 
-/**
- * TEMPORAIRE : reprend tel quel du HTML produit en chaîne par un module pas encore converti (aujourd'hui
- * `tradeSvg` de trade-chart.ts, qui échappe lui-même ses textes). Le garde-fou safe-html-guard.test.ts n'admet
- * son appel que dans les fichiers de sa liste d'exceptions ; à supprimer quand ces modules rendront du `SafeHtml`.
- */
-export function legacyHtml(source: string): SafeHtml {
-  return make(source);
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // Politique Trusted Types
 

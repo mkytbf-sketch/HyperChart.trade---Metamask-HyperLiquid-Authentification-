@@ -1,12 +1,125 @@
 import { feeRate, PARTNER } from './partner';
 import { ExchangeClient, HttpTransport, InfoClient, SubscriptionClient, WebSocketTransport, type ISubscription } from '@nktkas/hyperliquid';
-import { formatPrice, formatSize } from '@nktkas/hyperliquid/utils';
+import { formatSize } from '@nktkas/hyperliquid/utils';
 import { getAddress, type EIP1193Provider } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { assetFallback, asset as shown } from './asset';
 import { shortAddr } from './format';
 import { HL_SLOT_KEYS } from './storage-keys';
 import { asSealed, openSecret, sealSecret, vaultAvailable, type SealedSecret } from './agent-vault';
+import {
+  AGENT_GONE_NOTE,
+  AGENT_TTL_MS,
+  agentName,
+  agentStatus,
+  agentVerdict,
+  KEY_LOST_NOTE,
+  KEY_SESSION_NOTE,
+  ourAgents,
+  revokeNamedAgent,
+  type ListedAgent,
+  type Saved,
+} from './hl-agent';
+import {
+  CoinChangedError,
+  checkConfirmedPrice,
+  definitive,
+  describe,
+  describeBracket,
+  describeFound,
+  message,
+  orderStatuses,
+  PendingOrderError,
+  UnprotectedError,
+} from './hl-errors';
+import {
+  ACTION_SKEW_MS,
+  ACTION_TTL_MS,
+  intentsKey,
+  legacyPendingKey,
+  LEGACY_UNKNOWN_MS,
+  readIntents,
+  writeIntents,
+  type Intent,
+} from './hl-intents';
+import { metamaskSigner, permittedAccounts, pickAccounts, provider, walletVerdict } from './hl-metamask';
+import { parseOrders, parseOtherOrders, protectionResizes } from './hl-orders';
+import type { Asset, EntryLeverage, EntryOptions, HlOrder, HlPosition, HlState, RawOrder } from './hl-types';
+import {
+  bracketWires,
+  entryCloid,
+  limitWire,
+  marketWire,
+  MIN_NOTIONAL,
+  protectCloid,
+  rewire,
+  tpCloid,
+  tpLimitWire,
+  tpSplit,
+  triggerRef,
+  triggerWire,
+} from './hl-wires';
+
+// Modules découpés de ce fichier (Q-01, 24/11/2026) : leurs noms restent importables d'ici, comme avant.
+export {
+  AGENT_DAYS,
+  AGENT_GONE_NOTE,
+  AGENT_NAME,
+  agentName,
+  agentStatus,
+  agentVerdict,
+  KEY_LOST_NOTE,
+  KEY_PLAIN_NOTE,
+  KEY_SESSION_NOTE,
+  ourAgents,
+  revokeNamedAgent,
+} from './hl-agent';
+export type { ListedAgent } from './hl-agent';
+export {
+  checkConfirmedPrice,
+  CoinChangedError,
+  CONFIRM_DRIFT,
+  describeBracket,
+  describeFound,
+  message,
+  orderStatuses,
+  PendingOrderError,
+  PriceMovedError,
+  UnprotectedError,
+} from './hl-errors';
+export { ACTION_SKEW_MS, ACTION_TTL_MS } from './hl-intents';
+export { metamaskSigner, permittedIn, walletVerdict } from './hl-metamask';
+export { filledPart, parseOrders, parseOtherOrders, protectionResizes } from './hl-orders';
+export type {
+  EntryLeverage,
+  EntryOptions,
+  HlAnyPosition,
+  HlFill,
+  HlOrder,
+  HlOrderKind,
+  HlOtherOrder,
+  HlPosition,
+  HlState,
+} from './hl-types';
+export {
+  bracketWires,
+  checkTrigger,
+  entryCloid,
+  exitPnl,
+  limitWire,
+  MARKET_SLIPPAGE,
+  marketWire,
+  MIN_NOTIONAL,
+  ownCloid,
+  protectCloid,
+  rewire,
+  tpCloid,
+  tpLimitWire,
+  tpSplit,
+  triggerRef,
+  triggerWire,
+} from './hl-wires';
+export type { OrderWire } from './hl-wires';
 
 /**
  * Compte Hyperliquid : suivi en direct de la position de l'actif affiché, des ordres et des exécutions d'une adresse,
@@ -42,51 +155,11 @@ import { asSealed, openSecret, sealSecret, vaultAvailable, type SealedSecret } f
  * textes affichés parlent de l'« agent HyperChart ».
  */
 
-/** Écart toléré par un ordre au marché par rapport au milieu du carnet. */
-export const MARKET_SLIPPAGE = 0.01;
-/**
- * Écart maximal entre le prix montré dans la confirmation d'un ordre au marché et le prix relu juste avant l'envoi
- * (audit H-02, 24/11/2026) : au-delà, l'ordre est refusé avant tout envoi et doit être reconfirmé.
- */
-export const CONFIRM_DRIFT = 0.005;
-/** Écart toléré à l'exécution d'un stop ou d'un take profit déclenché (ordre au marché). */
-const TRIGGER_SLIPPAGE = 0.1;
-/** Valeur minimale d'un ordre sur Hyperliquid, en dollars. */
-export const MIN_NOTIONAL = 10;
-/**
- * Nom technique de l'agent tel qu'Hyperliquid l'affiche dans la liste des agents autorisés du compte. Ancien nom de
- * l'application, gardé exprès (voir l'en-tête) : la révocation remplace l'agent de même nom.
- */
-export const AGENT_NAME = 'HyperDashboard';
-/**
- * Durée de validité de l'agent, en jours : passé ce délai, Hyperliquid le refuse d'office et une nouvelle signature
- * MetaMask est demandée. Une clé d'agent dérobée cesse ainsi d'être utilisable d'elle-même. 7 jours (audit S-01,
- * 23/11/2026, 15 jours avant) : compromis entre le temps pendant lequel une clé volée resterait utilisable et la
- * fréquence des signatures. L'échéance est écrite chez Hyperliquid dans le nom de l'agent (`valid_until`) et gardée
- * en absolu (`agentUntil`) : un agent approuvé avant le changement reste valable jusqu'à sa propre échéance.
- */
-export const AGENT_DAYS = 7;
-const AGENT_TTL_MS = AGENT_DAYS * 86_400_000;
-/** Durée de validité de l'agent de remplacement posé par une révocation (sa clé n'existe plus : simple ménage). */
-const REVOKE_TTL_MS = 3_600_000;
 /**
  * Âge maximal du prix Hyperliquid pour envoyer un ordre : au-delà, prix, position et ordres sont relus avant
  * l'envoi (après une veille ou une coupure du flux, le dernier prix reçu peut dater de plusieurs minutes).
  */
 const FRESH_MS = 5_000;
-/**
- * Échéance des actions envoyées à Hyperliquid (`expiresAfter`, 23/11/2026) : une action reçue après est refusée par
- * Hyperliquid. Une réponse perdue n'est donc plus incertaine indéfiniment : passé l'échéance (plus une marge pour
- * l'écart d'horloge), un ordre toujours inconnu d'Hyperliquid n'a pas été reçu et ne le sera plus.
- */
-export const ACTION_TTL_MS = 30_000;
-/** Marge ajoutée à l'échéance avant de conclure qu'un ordre inconnu n'a pas été reçu (horloge du poste décalée). */
-export const ACTION_SKEW_MS = 30_000;
-/**
- * Intention enregistrée avant le 23/11/2026, sans échéance d'action : tranchée, comme avant, une minute après son
- * envoi (Hyperliquid traite un ordre en une ou deux secondes).
- */
-const LEGACY_UNKNOWN_MS = 60_000;
 /** Mark price plus vieux que cela : le milieu du carnet le remplace pour contrôler un TP / SL. */
 const MARK_FRESH_MS = 15_000;
 /** Attente maximale du verrou de trading du compte, partagé entre onglets (Web Locks). */
@@ -94,721 +167,7 @@ const LOCK_WAIT_MS = 15_000;
 /** Sans prix reçu depuis ce délai, le flux est tenu pour coupé : la pastille du compte passe au gris. */
 const STALE_MS = 15_000;
 
-/**
- * Ordre d'entrée exécuté, mais une protection demandée avec lui (stop loss, take profit) n'a pas pu être posée.
- * Ce n'est pas un échec de l'ordre : la position est ouverte, et il ne faut pas le renvoyer.
- */
-export class UnprotectedError extends Error {
-  constructor(
-    readonly done: string,
-    readonly missing: string[],
-  ) {
-    super(`${done}. ${missing.join(' ; ')}`);
-    this.name = 'UnprotectedError';
-  }
-}
-
-/**
- * Ordre dont la réponse s'est perdue (réseau coupé, délai dépassé) et qu'Hyperliquid n'a pas pu confirmer ni
- * démentir : il a peut-être été reçu. Aucun nouvel envoi n'est permis tant qu'il n'est pas retrouvé ou écarté.
- */
-export class PendingOrderError extends Error {
-  constructor(
-    readonly cloid: string,
-    cause: string,
-  ) {
-    super(
-      `Réponse d’Hyperliquid perdue (${cause}) : l’ordre a peut-être été reçu. Aucun nouvel ordre d’ouverture ne partira tant que son sort n’est pas tranché (fermer, annuler et poser un stop restent possibles) ; vérifie la liste des ordres et la position, puis « Vérifier l’ordre en suspens » dans la carte.`,
-    );
-    this.name = 'PendingOrderError';
-  }
-}
-
-/**
- * Statuts d'un envoi d'ordres. Le SDK lève `ApiRequestError` dès qu'un seul des ordres d'un groupe est refusé, en
- * gardant la réponse complète dans `error.response` : une entrée acceptée avec une protection refusée doit être lue
- * comme telle, pas comme un échec global (la renvoyer doublerait l'exposition). null : pas de statuts lisibles.
- */
-export function orderStatuses(err: unknown): unknown[] | null {
-  const s = (err as { response?: { response?: { data?: { statuses?: unknown } } } } | null)?.response?.response?.data?.statuses;
-  return Array.isArray(s) ? s : null;
-}
-
-/** Erreur dont on sait que l'ordre n'est pas parti, ou a été refusé par Hyperliquid (réponse reçue). */
-function definitive(err: unknown): boolean {
-  const name = (err as { name?: string } | null)?.name;
-  return name === 'ApiRequestError' || name === 'ValidationError' || name === 'PendingOrderError';
-}
-
-/** Identifiant client d'un ordre d'entrée : préfixe propre, le reste au hasard (une intention = un identifiant). */
-export function entryCloid(): `0x${string}` {
-  return cloidWith(CLOID_ENTRY);
-}
-
-/**
- * Identifiant client d'un stop loss (autonome ou rattaché à une entrée) ou d'un TP déclenché rattaché à une entrée
- * limite (23/11/2026) : tous les ordres posés par HyperChart en portent un, pour être rapprochés après une réponse
- * perdue et reconnus comme les siens par le recalage automatique.
- */
-export function protectCloid(tpsl: 'tp' | 'sl'): `0x${string}` {
-  return cloidWith(tpsl === 'sl' ? CLOID_SL : CLOID_TP_TRIGGER);
-}
-
-function cloidWith(prefix: string): `0x${string}` {
-  const rnd = [...crypto.getRandomValues(new Uint8Array(14))].map(b => b.toString(16).padStart(2, '0')).join('');
-  return `0x${prefix}${rnd}`;
-}
-
-/** Ordre posé par HyperChart (préfixe d'identifiant client propre) : seul ordre que le recalage automatique touche. */
-export function ownCloid(cloid: string | null | undefined): boolean {
-  return !!cloid && OWN_PREFIXES.some(p => cloid.toLowerCase().startsWith(`0x${p}`));
-}
-
-/** Ordre retrouvé par son identifiant client : ce qu'on peut en dire à l'utilisateur. */
-export function describeFound(status: string): string {
-  if (status === 'filled') return 'Ordre exécuté';
-  if (status === 'open' || status === 'triggered') return 'Ordre placé dans le carnet';
-  if (status === 'canceled' || status.endsWith('Canceled')) return `Ordre reçu puis annulé (${status})`;
-  if (status === 'rejected' || status.endsWith('Rejected')) throw new Error(`Ordre refusé par Hyperliquid (${status})`);
-  return `Ordre reçu (${status})`;
-}
-
-/** Nom sous lequel l'agent est autorisé : le nom affiché par Hyperliquid, suivi de sa fin de validité (ms). */
-export const agentName = (until: number) => `${AGENT_NAME} valid_until ${until}`;
-
-/**
- * Révoque l'agent HyperDashboard du compte. Hyperliquid désinscrit un agent nommé dès qu'un autre agent est
- * autorisé sous le même nom (documentation « Nonces and API wallets ») : on autorise donc, par une signature du
- * compte, un agent de remplacement dont la clé est tirée au hasard et jamais conservée. L'ancienne clé, où qu'elle
- * se trouve, ne peut plus rien signer ; la nouvelle n'existe plus, et son autorisation s'éteint en une heure.
- */
-export async function revokeNamedAgent(master: Pick<ExchangeClient, 'approveAgent'>, now = Date.now()): Promise<`0x${string}`> {
-  const discarded = privateKeyToAccount(generatePrivateKey());
-  await master.approveAgent({ agentAddress: discarded.address, agentName: agentName(now + REVOKE_TTL_MS) });
-  return discarded.address;
-}
-
-/** Agent autorisé d'un compte, tel que listé par Hyperliquid (info `extraAgents`). */
-export interface ListedAgent {
-  address: string;
-  name: string;
-  /** Fin de validité (ms) ; null pour un agent sans expiration. */
-  validUntil: number | null;
-}
-
-/** Nom de base d'un agent listé, sans un éventuel suffixe « valid_until … ». */
-const baseName = (name: string) => name.replace(/ valid_until \d+$/, '');
-
-/**
- * Agents HyperChart (nom technique `AGENT_NAME`) encore valables parmi ceux d'un compte (23/11/2026) : ceux
- * qu'une nouvelle autorisation sous ce nom remplacerait.
- */
-export function ourAgents(list: readonly ListedAgent[], now = Date.now()): ListedAgent[] {
-  return list.filter(a => baseName(a.name) === AGENT_NAME && (a.validUntil === null || a.validUntil > now));
-}
-
-/**
- * État chez Hyperliquid de l'agent `address` (23/11/2026) : autorisé et valable (avec sa fin de validité), ou non
- * (absent de la liste : remplacé, révoqué, jamais enregistré ; ou périmé). Sert avant de réutiliser une clé
- * enregistrée et après une révocation.
- */
-export function agentStatus(
-  list: readonly ListedAgent[],
-  address: string,
-  now = Date.now(),
-): { valid: true; until: number | null } | { valid: false; why: 'absent' | 'expired' } {
-  const a = list.find(x => x.address.toLowerCase() === address.toLowerCase());
-  if (!a) return { valid: false, why: 'absent' };
-  if (a.validUntil !== null && a.validUntil <= now) return { valid: false, why: 'expired' };
-  return { valid: true, until: a.validUntil };
-}
-
-export interface HlPosition {
-  /** Taille signée, dans l'unité de l'actif : positive pour un long. */
-  size: number;
-  entry: number;
-  liquidation: number | null;
-  pnl: number;
-  roe: number;
-  leverage: number;
-  cross: boolean;
-  margin: number;
-  value: number;
-}
-
-/**
- * Position d'un actif quelconque du compte (panneau des positions, sous le graphique) : mêmes champs que
- * `HlPosition`, plus le nom de l'actif. La position de l'actif affiché reste aussi dans `HlState.position`.
- */
-export interface HlAnyPosition extends HlPosition {
-  coin: string;
-}
-
-export type HlOrderKind = 'limit' | 'tp' | 'sl' | 'stop';
-
-export interface HlOrder {
-  oid: number;
-  kind: HlOrderKind;
-  /** Achat ? */
-  buy: boolean;
-  /** Prix affiché : prix de déclenchement d'un ordre conditionnel, prix limite sinon. */
-  price: number;
-  size: number;
-  reduceOnly: boolean;
-  /** TP / SL rattaché à la position (sa taille suit celle de la position). */
-  position: boolean;
-  /** Ordre conditionnel (déclenché à un prix) ; faux pour un ordre limite, y compris un TP limite. */
-  trigger: boolean;
-  label: string;
-  /** Identifiant client posé par HyperDashboard (TP complet ou partiel), s'il y en a un. */
-  cloid?: string;
-  /** TP limite : complet (couvre le reste de la position) ou partiel (taille fixe, en plus). */
-  tpRole?: 'full' | 'partial';
-  /** Ordre conditionnel exécuté au marché une fois déclenché (faux : il pose un ordre limite). */
-  market?: boolean;
-  /** Prix limite publié (ordre limite, ou conditionnel limite une fois déclenché) ; sert à le conserver au déplacement. */
-  limitPx?: number;
-  /** Durée de validité publiée par Hyperliquid (Gtc, Alo, Ioc…), quand elle l'est. */
-  tif?: string | null;
-  /** Taille d'origine (une entrée partiellement exécutée a `size` < `origSize`). */
-  origSize?: number;
-  /** Posé par HyperChart (identifiant client à préfixe propre) : seul ordre que le recalage automatique touche. */
-  ours?: boolean;
-  /**
-   * TP / SL rattachés à cette entrée (groupe « normalTpsl ») et encore EN ATTENTE : Hyperliquid ne les place qu'une
-   * fois l'entrée entièrement exécutée ; annuler l'entrée les annule aussi (23/11/2026).
-   */
-  children?: HlOrder[];
-}
-
-/** Ordre ouvert sur un autre actif que celui affiché : lecture seule, pour le panneau des positions. */
-export interface HlOtherOrder extends HlOrder {
-  coin: string;
-}
-
-export interface HlFill {
-  t: number;
-  price: number;
-  size: number;
-  buy: boolean;
-  dir: string;
-  pnl: number;
-}
-
-export interface HlState {
-  address: string | null;
-  /** Trading activé : un agent autorisé est enregistré. */
-  trading: boolean;
-  /** Fin de validité de l'agent enregistré (ms) ; null sans agent, ou pour un agent autorisé sans expiration. */
-  agentUntil: number | null;
-  /** Connexion du flux en direct. */
-  live: boolean;
-  accountValue: number | null;
-  withdrawable: number | null;
-  /** Marge utilisée par l'ensemble des positions (marginSummary.totalMarginUsed), null si absente. */
-  marginUsed: number | null;
-  position: HlPosition | null;
-  /** Toutes les positions ouvertes du compte, tous actifs confondus (celle de l'actif affiché comprise). */
-  positions: HlAnyPosition[];
-  orders: HlOrder[];
-  /** Ordres ouverts des autres actifs que celui affiché (lecture seule). */
-  otherOrders: HlOtherOrder[];
-  fills: HlFill[];
-  /** Milieu du carnet BTC sur Hyperliquid. */
-  mid: number | null;
-  /**
-   * Mark price de l'actif (flux `activeAssetCtx`) : c'est lui qui déclenche les TP / SL chez Hyperliquid (23/11/2026).
-   * Null tant qu'il n'est pas reçu ; `triggerRef` retombe alors sur le milieu du carnet.
-   */
-  mark: number | null;
-  /**
-   * Agent enregistré pour ce compte dont la clé n'est pas utilisable ici (clé perdue, illisible) mais qui reste
-   * autorisé chez Hyperliquid jusqu'à `until` (null : sans expiration connue). Il reste révocable (« Révoquer »).
-   */
-  orphanAgent: { address: string | null; until: number | null } | null;
-  /** Ordres dont la réponse s'est perdue et dont le sort n'est pas encore tranché (23/11/2026). */
-  intents: { cloid: string; coin: string; at: number }[];
-  /**
-   * Ce qu'Hyperliquid annonce comme « disponible pour trader » sur le BTC, par sens (achat, vente) : marge
-   * disponible en USDC et taille maximale (dans l'unité de l'actif) au levier réglé sur Hyperliquid. Tient compte d'un compte unifié
-   * (USDC côté comptant), ce que le simple « retirable » du compte perpétuel ne fait pas.
-   */
-  trade: { avail: [number, number]; maxSz: [number, number]; leverage: number; cross: boolean } | null;
-  /** Frais d'interface autorisé par ce compte, au moins au taux demandé (null : pas encore lu, ou sans objet). */
-  builderApproved: boolean | null;
-  /** Parrain du compte : son code, « aucun » si le compte n'en a pas, null tant qu'il n'est pas lu. */
-  referredBy: string | 'aucun' | null;
-  maxLeverage: number;
-  error: string | null;
-  /**
-   * Remarque sur la garde de la clé de l'agent, affichée dans la carte : clé gardée en mémoire seulement (coffre
-   * indisponible dans ce navigateur) ou clé chiffrée devenue illisible. Null : rien à signaler.
-   */
-  keyNote: string | null;
-  /**
-   * Audit S-02 (23/11/2026) : remarque sur le compte que MetaMask expose à cette page quand ce n'est plus le compte
-   * suivi (ordres et signatures gelés jusqu'à confirmation), ou quand MetaMask est verrouillé ou déconnecté. Null : rien.
-   */
-  walletNote: string | null;
-}
-
-/**
- * Connexion gardée dans le stockage local, une par emplacement (`HL_SLOT_KEYS`). En mémoire, `agentKey` est la clé de
- * l'agent en clair ; dans le stockage, seule sa forme chiffrée (`agentSealed`) est écrite. Sans coffre, la clé n'est
- * gardée qu'en mémoire, pour la session (23/11/2026 : plus jamais en clair dans le stockage). Les métadonnées de
- * l'agent (adresse, compte, échéance) sont gardées indépendamment de la clé : un agent dont la clé est perdue reste
- * connu, donc révocable.
- */
-interface Saved {
-  address?: string;
-  agentKey?: `0x${string}`;
-  /** Clé de l'agent chiffrée (`agent-vault.ts`) : seule forme de la clé écrite dans le stockage. */
-  agentSealed?: SealedSecret;
-  /** Adresse publique de l'agent (23/11/2026) : gardée même si la clé est perdue, pour la révocation et l'affichage. */
-  agentAddress?: string;
-  agentFor?: string;
-  /** Fin de validité de l'agent (ms) ; absente pour un agent autorisé avant l'ajout de l'expiration. */
-  agentUntil?: number;
-}
-
-/**
- * Coffre indisponible (navigation privée, navigateur ancien) : la clé de l'agent n'est gardée qu'en mémoire, jamais en
- * clair dans le stockage (23/11/2026). Dit avant l'activation et dans la carte.
- */
-export const KEY_SESSION_NOTE =
-  'Chiffrement indisponible dans ce navigateur (navigation privée ?) : la clé de l’agent n’est gardée qu’en mémoire, pour cette session. Après un rechargement de la page, il faudra réautoriser le trading (nouvelle signature MetaMask).';
-/** Ancien nom (clé en clair), gardé pour les imports existants : c'est désormais la clé en mémoire seulement. */
-export const KEY_PLAIN_NOTE = KEY_SESSION_NOTE;
-/** Clé chiffrée devenue illisible (données du site effacées, coffre inaccessible) : l'agent reste autorisé, révocable. */
-export const KEY_LOST_NOTE =
-  'La clé de l’agent n’a pas pu être déchiffrée (données du navigateur effacées ou coffre inaccessible) : ce navigateur ne peut plus trader avec. L’agent reste autorisé chez Hyperliquid jusqu’à son échéance : révoque-le (« Révoquer ») ou réactive le trading, ce qui le remplace.';
-/** Agent enregistré absent de la liste d'Hyperliquid, ou périmé : sa clé n'est pas réutilisée (23/11/2026). */
-export const AGENT_GONE_NOTE =
-  'L’agent enregistré dans ce navigateur n’est plus autorisé chez Hyperliquid (remplacé depuis un autre navigateur, révoqué ou expiré) : sa clé est abandonnée. Réactive le trading pour trader d’ici.';
-
-/** Caractéristiques d'un contrat : rang dans la liste des actifs, décimales de taille, levier maximal. */
-interface AssetBase {
-  index: number;
-  szDecimals: number;
-  maxLeverage: number;
-}
-
-/** Contrat de l'actif d'un compte, avec son nom : vérifié avant chaque envoi (`guard`). */
-interface Asset extends AssetBase {
-  coin: string;
-}
-
-/**
- * Ordre refusé avant tout envoi : il visait un autre actif que celui du compte ou que celui affiché (changement
- * d'actif pendant sa préparation). Rien n'est parti.
- */
-/** Prix trop éloigné de celui de la confirmation (ordre au marché) : refusé avant tout envoi, à reconfirmer. */
-export class PriceMovedError extends Error {
-  constructor(
-    readonly expected: number,
-    readonly mid: number,
-  ) {
-    const pct = (Math.abs(mid / expected - 1) * 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 });
-    super(`Le prix a bougé de ${pct} % depuis la confirmation : rien n’a été envoyé. Vérifie le nouveau prix et reconfirme l’ordre.`);
-    this.name = 'PriceMovedError';
-  }
-}
-
-/** Refuse l'ordre au marché si le prix frais s'écarte de plus de `CONFIRM_DRIFT` du prix confirmé (sans prix confirmé : rien). */
-export function checkConfirmedPrice(expected: number | null | undefined, mid: number): void {
-  if (!expected || !(expected > 0)) return;
-  if (Math.abs(mid / expected - 1) > CONFIRM_DRIFT) throw new PriceMovedError(expected, mid);
-}
-
-export class CoinChangedError extends Error {
-  constructor(
-    readonly wanted: string,
-    readonly current: string,
-  ) {
-    super(`Actif changé (${wanted} → ${current}) : rien n’a été envoyé. Vérifie l’ordre sur l’actif affiché et recommence.`);
-    this.name = 'CoinChangedError';
-  }
-}
-
-// ───────────── Construction des ordres (fonctions pures, testées) ─────────────
-
-export type OrderWire = {
-  a: number;
-  b: boolean;
-  p: string;
-  s: string;
-  r: boolean;
-  t: { limit: { tif: 'Gtc' | 'Ioc' | 'Alo' } } | { trigger: { isMarket: boolean; triggerPx: string; tpsl: 'tp' | 'sl' } };
-  /** Identifiant client (0x + 32 hexadécimaux). */
-  c?: `0x${string}`;
-};
-
-/**
- * Identifiants clients des take profit limite posés par HyperDashboard : les 4 premiers chiffres disent leur rôle, le reste
- * est tiré au hasard. Ils permettent de reconnaître le TP complet parmi les TP partiels après un rechargement.
- */
-const CLOID_FULL = 'f011';
-const CLOID_PARTIAL = '9a57';
-const CLOID_ENTRY = 'e17e';
-/** Stop loss posé par HyperChart (23/11/2026). */
-const CLOID_SL = '5105';
-/** Take profit déclenché rattaché à une entrée limite, posé par HyperChart (23/11/2026). */
-const CLOID_TP_TRIGGER = '7e1d';
-const OWN_PREFIXES = [CLOID_FULL, CLOID_PARTIAL, CLOID_ENTRY, CLOID_SL, CLOID_TP_TRIGGER];
-export function tpCloid(role: 'full' | 'partial'): `0x${string}` {
-  return cloidWith(role === 'full' ? CLOID_FULL : CLOID_PARTIAL);
-}
-
-/**
- * Répartition des take profit limite d'une position : le TP complet (marqué comme tel, ou à défaut un TP non
- * marqué qui couvre au moins le reste), les TP partiels (tous les autres), la taille qu'ils couvrent, et la taille
- * que doit avoir le TP complet pour fermer exactement le reste de la position.
- */
-export function tpSplit(
-  orders: HlOrder[],
-  position: number,
-  szDecimals: number,
-): { full: HlOrder | undefined; partials: HlOrder[]; partialSize: number; fullSize: number } {
-  const limits = orders.filter(o => o.kind === 'tp' && !o.trigger);
-  const k = 10 ** szDecimals;
-  const pos = Math.abs(position);
-  const tagged = limits.filter(o => o.tpRole === 'partial').reduce((a, o) => a + o.size, 0);
-  let full = limits.find(o => o.tpRole === 'full');
-  if (!full) {
-    // Ancien TP sans marque : le plus gros, s'il couvre (à peu près) tout ce que les partiels laissent.
-    const legacy = limits.filter(o => !o.tpRole).sort((a, b) => b.size - a.size)[0];
-    if (legacy && legacy.size >= (pos - tagged) * 0.999 - 1 / k) full = legacy;
-  }
-  const partials = limits.filter(o => o !== full);
-  const partialSize = partials.reduce((a, o) => a + o.size, 0);
-  return { full, partials, partialSize, fullSize: Math.max(0, Math.floor((pos - partialSize) * k + 1e-6) / k) };
-}
-
-/** Prix limite d'un ordre au marché : le milieu décalé de la tolérance, du côté défavorable. */
-function slippagePrice(mid: number, buy: boolean, slippage: number, szDecimals: number): string {
-  return formatPrice(mid * (buy ? 1 + slippage : 1 - slippage), szDecimals);
-}
-
-export function marketWire(asset: AssetBase, buy: boolean, size: number, mid: number, reduceOnly = false): OrderWire {
-  return {
-    a: asset.index,
-    b: buy,
-    p: slippagePrice(mid, buy, MARKET_SLIPPAGE, asset.szDecimals),
-    s: formatSize(size, asset.szDecimals),
-    r: reduceOnly,
-    t: { limit: { tif: 'Ioc' } },
-  };
-}
-
-export function limitWire(asset: AssetBase, buy: boolean, size: number, price: number, reduceOnly = false): OrderWire {
-  return {
-    a: asset.index,
-    b: buy,
-    p: formatPrice(price, asset.szDecimals),
-    s: formatSize(size, asset.szDecimals),
-    r: reduceOnly,
-    t: { limit: { tif: 'Gtc' } },
-  };
-}
-
-/**
- * Take profit d'une position en ordre limite : ordre de sens opposé, réduisant seulement, posé dans le carnet au
- * prix visé (Gtc). Exécuté à ce prix ou mieux, jamais au marché : pas de glissement, frais de teneur de marché
- * s'il attend dans le carnet. Sa taille est fixe : elle ne suit pas un renforcement de la position.
- */
-export function tpLimitWire(asset: AssetBase, long: boolean, size: number, price: number): OrderWire {
-  return limitWire(asset, !long, size, price, true);
-}
-
-/**
- * Take profit rattaché à un ordre d'entrée limite (groupe « normalTpsl ») : Hyperliquid n'accepte, avant que la
- * position existe, que des ordres conditionnels. Celui-ci est un conditionnel limite (isMarket faux) : déclenché au
- * prix visé, il pose un ordre limite réduisant seulement à ce même prix, sans glissement.
- */
-function tpTriggerLimitWire(asset: AssetBase, long: boolean, size: number, price: number): OrderWire {
-  return {
-    a: asset.index,
-    b: !long,
-    p: formatPrice(price, asset.szDecimals),
-    s: formatSize(size, asset.szDecimals),
-    r: true,
-    t: { trigger: { isMarket: false, triggerPx: formatPrice(price, asset.szDecimals), tpsl: 'tp' } },
-  };
-}
-
-/**
- * Ordre d'entrée limite avec son take profit et son stop loss rattachés (groupe « normalTpsl ») : les deux ne
- * s'activent qu'une fois l'entrée exécutée, pour la taille de l'entrée.
- */
-export function bracketWires(
-  asset: AssetBase,
-  buy: boolean,
-  size: number,
-  price: number,
-  tp?: number | null,
-  sl?: number | null,
-): OrderWire[] {
-  const out = [limitWire(asset, buy, size, price)];
-  if (tp) out.push(tpTriggerLimitWire(asset, buy, size, tp));
-  if (sl) out.push(triggerWire(asset, buy, size, sl, 'sl'));
-  return out;
-}
-
-/**
- * Stop loss (et ancien take profit déclenché) d'une position : ordre de sens opposé, réduisant seulement, exécuté au marché quand
- * le prix de déclenchement est touché (avec une tolérance large pour être sûr d'être exécuté).
- */
-export function triggerWire(asset: AssetBase, long: boolean, size: number, trigger: number, tpsl: 'tp' | 'sl'): OrderWire {
-  const buy = !long;
-  return {
-    a: asset.index,
-    b: buy,
-    p: slippagePrice(trigger, buy, TRIGGER_SLIPPAGE, asset.szDecimals),
-    s: formatSize(size, asset.szDecimals),
-    r: true,
-    t: { trigger: { isMarket: true, triggerPx: formatPrice(trigger, asset.szDecimals), tpsl } },
-  };
-}
-
-/**
- * Ordre ouvert re-décrit à un autre prix et / ou une autre taille, en conservant tout le reste (23/11/2026, déplacement
- * d'une ligne et recalage) : sens, réduisant seulement, nature (limite, déclenché au marché, déclenché limite), durée
- * de validité (Gtc, Alo) et identifiant client. Un déclenché limite garde l'écart entre son prix limite et son prix
- * de déclenchement. Lève une erreur, et rien n'est envoyé, si une propriété ne peut pas être conservée.
- */
-export function rewire(asset: AssetBase, o: HlOrder, price: number, size: number): OrderWire {
-  const c = o.cloid ? { c: o.cloid as `0x${string}` } : {};
-  const base = { a: asset.index, b: o.buy, s: formatSize(size, asset.szDecimals), r: o.reduceOnly };
-  if (!o.trigger) {
-    // Champ absent (ancienne lecture) : Gtc, la seule durée que HyperChart pose sur un ordre qui attend au carnet.
-    const tif = o.tif === undefined ? 'Gtc' : o.tif;
-    if (tif !== 'Gtc' && tif !== 'Alo')
-      throw new Error(
-        `Durée de validité « ${tif ?? 'inconnue'} » de cet ordre non conservable : rien n’a été déplacé. Annule-le et repose-le.`,
-      );
-    return { ...base, p: formatPrice(price, asset.szDecimals), t: { limit: { tif } }, ...c };
-  }
-  const tpsl = o.kind === 'tp' ? 'tp' : 'sl';
-  if (o.market === undefined) throw new Error('Type d’exécution de cet ordre conditionnel inconnu : rien n’a été déplacé.');
-  let p: string;
-  if (o.market) p = slippagePrice(price, o.buy, TRIGGER_SLIPPAGE, asset.szDecimals);
-  else {
-    if (!(o.limitPx && o.limitPx > 0)) throw new Error('Prix limite de cet ordre conditionnel inconnu : rien n’a été déplacé.');
-    const limit = o.limitPx + (price - o.price);
-    if (!(limit > 0)) throw new Error('Le prix limite décalé de cet ordre deviendrait négatif : rien n’a été déplacé.');
-    p = formatPrice(limit, asset.szDecimals);
-  }
-  return { ...base, p, t: { trigger: { isMarket: o.market, triggerPx: formatPrice(price, asset.szDecimals), tpsl } }, ...c };
-}
-
-/** Un TP doit être du côté du gain, un SL du côté de la perte ; null si le prix est acceptable, sinon la raison. */
-export function checkTrigger(long: boolean, tpsl: 'tp' | 'sl', trigger: number, mark: number): string | null {
-  const above = trigger > mark;
-  if (tpsl === 'tp' && above !== long)
-    return long ? 'Un take profit de long doit être au-dessus du prix.' : 'Un take profit de short doit être au-dessous du prix.';
-  if (tpsl === 'sl' && above === long)
-    return long ? 'Un stop loss de long doit être au-dessous du prix.' : 'Un stop loss de short doit être au-dessus du prix.';
-  return null;
-}
-
-/**
- * Prix de référence d'un TP / SL (23/11/2026) : Hyperliquid les déclenche sur le mark price. Le milieu du carnet ne
- * sert qu'en repli, quand le mark price n'est pas (encore) connu.
- */
-export function triggerRef(s: Pick<HlState, 'mark' | 'mid'>): number | null {
-  return s.mark ?? s.mid;
-}
-
-/**
- * Résultat d'un take profit ou d'un stop loss exécuté au prix `at`, hors frais : (prix − entrée) × taille signée,
- * sur la part qu'il ferme (toute la position pour un TP / SL de position). null pour un autre ordre.
- */
-export function exitPnl(
-  position: Pick<HlPosition, 'size' | 'entry'> | null,
-  order: Pick<HlOrder, 'kind' | 'position' | 'size'>,
-  at: number,
-): number | null {
-  if (!position || (order.kind !== 'tp' && order.kind !== 'sl')) return null;
-  const size = order.position ? Math.abs(position.size) : Math.min(order.size, Math.abs(position.size));
-  return (at - position.entry) * Math.sign(position.size) * size;
-}
-
-/** Ordres ouverts tels que publiés par Hyperliquid, ramenés à ce que le graphique affiche. */
-/** Ordre ouvert tel que publié par Hyperliquid (frontendOpenOrders, flux openOrders). */
-type RawOrder = {
-  coin: string;
-  side: 'B' | 'A';
-  limitPx: string;
-  sz: string;
-  oid: number;
-  isTrigger: boolean;
-  triggerPx: string;
-  orderType: string;
-  reduceOnly: boolean;
-  isPositionTpsl: boolean;
-  cloid?: string | null;
-  tif?: string | null;
-  origSz?: string;
-  /** TP / SL rattachés à une entrée pas encore entièrement exécutée (groupe « normalTpsl »). */
-  children?: RawOrder[];
-};
-
-export function parseOrders(raw: RawOrder[], coin: string = shown.coin): HlOrder[] {
-  return raw.filter(o => o.coin === coin).map(orderOf);
-}
-
-/**
- * Ordres ouverts des autres actifs que celui affiché, lus de la même façon (panneau des positions). Ils ne servent
- * qu'à l'affichage : aucune action de trading ne part d'eux.
- */
-export function parseOtherOrders(raw: RawOrder[], coin: string = shown.coin): HlOtherOrder[] {
-  return raw.filter(o => o.coin !== coin).map(o => ({ ...orderOf(o), coin: o.coin }));
-}
-
-/** Un ordre ouvert d'Hyperliquid, traduit (sens, nature, libellé, rôle d'un TP). */
-function orderOf(o: RawOrder): HlOrder {
-  const buy = o.side === 'B';
-  // Un ordre limite « réduisant seulement » ne peut que fermer : c'est un take profit limite.
-  const kind: HlOrderKind = !o.isTrigger
-    ? o.reduceOnly
-      ? 'tp'
-      : 'limit'
-    : o.orderType.startsWith('Take Profit')
-      ? 'tp'
-      : o.reduceOnly || o.isPositionTpsl
-        ? 'sl'
-        : 'stop';
-  const size = +o.sz;
-  const cloid = o.cloid ?? undefined;
-  const tpRole =
-    kind === 'tp' && !o.isTrigger && cloid
-      ? cloid.startsWith(`0x${CLOID_FULL}`)
-        ? 'full'
-        : cloid.startsWith(`0x${CLOID_PARTIAL}`)
-          ? 'partial'
-          : undefined
-      : undefined;
-  const label =
-    kind === 'tp'
-      ? o.isTrigger
-        ? 'TP'
-        : tpRole === 'partial'
-          ? 'TP partiel'
-          : 'TP limite'
-      : kind === 'sl'
-        ? 'SL'
-        : kind === 'stop'
-          ? buy
-            ? 'Stop achat'
-            : 'Stop vente'
-          : buy
-            ? 'Achat'
-            : 'Vente';
-  return {
-    oid: o.oid,
-    kind,
-    buy,
-    price: +(o.isTrigger ? o.triggerPx : o.limitPx),
-    size,
-    reduceOnly: o.reduceOnly,
-    position: o.isPositionTpsl,
-    trigger: o.isTrigger,
-    label,
-    ...(cloid ? { cloid } : {}),
-    ...(tpRole ? { tpRole } : {}),
-    ...(o.isTrigger ? { market: /market/i.test(o.orderType) } : {}),
-    ...(+o.limitPx > 0 ? { limitPx: +o.limitPx } : {}),
-    ...(o.tif !== undefined ? { tif: o.tif } : {}),
-    ...(o.origSz !== undefined && +o.origSz > 0 ? { origSize: +o.origSz } : {}),
-    ...(ownCloid(cloid) ? { ours: true } : {}),
-    ...(o.children?.length ? { children: o.children.map(orderOf) } : {}),
-  };
-}
-
-/**
- * Part déjà exécutée d'une entrée (23/11/2026) : `origSize − size`, 0 si l'ordre n'a pas commencé à s'exécuter ou si
- * sa taille d'origine n'est pas connue.
- */
-export function filledPart(o: Pick<HlOrder, 'size' | 'origSize'>): number {
-  return o.origSize !== undefined && o.origSize > o.size ? o.origSize - o.size : 0;
-}
-
-/**
- * Take profit et stop loss à recaler sur la taille de la position, quand elle a changé (renforcée par un long ou
- * un short exécuté, ou allégée) :
- *  - le TP limite complet reprend exactement ce que les TP partiels laissent de la position ;
- *  - un TP ou SL déclenché de taille fixe (posé avec une entrée limite) est agrandi à toute la position.
- * Les TP partiels gardent leur taille, et un TP / SL rattaché à la position la suit déjà chez Hyperliquid. Ne
- * propose rien sous le montant minimal d'un ordre (`minNotional`, en USDC).
- * Depuis le 23/11/2026, seuls les ordres posés par HyperChart (identifiant client à préfixe propre, `ours`) sont
- * recalés : jamais un ordre posé depuis l'interface d'Hyperliquid ou un autre outil.
- */
-export function protectionResizes(
-  orders: HlOrder[],
-  position: number,
-  szDecimals: number,
-  minNotional = MIN_NOTIONAL,
-): { order: HlOrder; size: number }[] {
-  const pos = Math.abs(position);
-  if (!(pos > 0)) return [];
-  const k = 10 ** szDecimals;
-  const step = 1 / k;
-  const closingBuy = position < 0;
-  const out: { order: HlOrder; size: number }[] = [];
-  const { full, fullSize } = tpSplit(orders, pos, szDecimals);
-  if (
-    full?.ours &&
-    full.buy === closingBuy &&
-    fullSize > 0 &&
-    Math.abs(full.size - fullSize) >= step / 2 &&
-    fullSize * full.price >= minNotional
-  )
-    out.push({ order: full, size: fullSize });
-  const posSize = Math.floor(pos * k + 1e-6) / k;
-  for (const o of orders) {
-    if (!o.ours || !o.trigger || o.position || !o.reduceOnly || o.buy !== closingBuy) continue;
-    if (o.kind !== 'tp' && o.kind !== 'sl') continue;
-    if (o.size < posSize - step / 2) out.push({ order: o, size: posSize });
-  }
-  return out;
-}
-
 // ───────────── Compte ─────────────
-
-/**
- * Ordre dont la réponse peut se perdre, enregistré AVANT son envoi (23/11/2026) : lié au compte, à l'actif et à son
- * identifiant client, il est levé à la réponse. Une intention restée en place (réponse perdue, page rechargée pendant
- * l'envoi) bloque les nouveaux ordres d'ouverture jusqu'à ce que son sort soit tranché.
- */
-interface Intent {
-  cloid: `0x${string}`;
-  at: number;
-  coin: string;
-  address: string;
-  /** Échéance de l'action (`expiresAfter`, ms) ; null pour une intention enregistrée avant le 23/11/2026. */
-  expiresAt: number | null;
-}
-
-/**
- * Verdict sur un agent enregistré, d'après la liste des agents du compte chez Hyperliquid (23/11/2026) :
- *  - `valid` : listé et valable ;
- *  - `gone` : périmé, ou absent alors qu'un autre agent HyperChart est listé (remplacé depuis un autre navigateur),
- *    ou absent et sans échéance locale (ancien agent qu'on ne peut pas confirmer : pas réutilisé) ;
- *  - `unknown` : absent d'une liste sans agent HyperChart, avec une échéance locale encore à venir. Rien n'est conclu
- *    (la liste d'Hyperliquid n'est pas tenue pour exhaustive tant que ce n'est pas vérifié sur un vrai compte).
- */
-export function agentVerdict(
-  list: readonly ListedAgent[],
-  address: string,
-  hasLocalUntil: boolean,
-  now = Date.now(),
-): { verdict: 'valid'; until: number | null } | { verdict: 'gone' | 'unknown' } {
-  const st = agentStatus(list, address, now);
-  if (st.valid) return { verdict: 'valid', until: st.until };
-  if (st.why === 'expired') return { verdict: 'gone' };
-  if (ourAgents(list, now).length > 0 || !hasLocalUntil) return { verdict: 'gone' };
-  return { verdict: 'unknown' };
-}
 
 export class Hyperliquid {
   state: HlState = {
@@ -978,42 +337,14 @@ export class Hyperliquid {
 
   // ───────────── Intentions d'envoi (réponses perdues) ─────────────
 
-  private get intentsKey(): string {
-    return `${this.storeKey}:intents`;
-  }
-
-  /** Ancienne forme (avant le 23/11/2026) : une seule incertitude, sans actif ni échéance. */
-  private get legacyPendingKey(): string {
-    return `${this.storeKey}:pending`;
-  }
-
-  /**
-   * Intentions en cours, relues du stockage à chaque fois : un autre onglet a pu en ajouter ou en lever une. Une
-   * intention de plus d'un jour est abandonnée (son sort est de toute façon tranché depuis longtemps).
-   */
+  /** Intentions en cours, relues du stockage à chaque fois (`readIntents`) ; stockage illisible : celles gardées en mémoire. */
   private loadIntents(): Intent[] {
-    const fresh = (i: Intent) =>
-      typeof i?.cloid === 'string' && /^0x[0-9a-f]{32}$/.test(i.cloid) && typeof i.at === 'number' && Date.now() - i.at < 86_400_000;
-    try {
-      const list = (JSON.parse(localStorage.getItem(this.intentsKey) ?? '[]') as Intent[]).filter(fresh);
-      const legacy = JSON.parse(localStorage.getItem(this.legacyPendingKey) ?? 'null') as { cloid: `0x${string}`; at: number } | null;
-      if (legacy && this.saved.address)
-        list.push({ cloid: legacy.cloid, at: legacy.at, coin: '', address: this.saved.address, expiresAt: null });
-      return list.filter(fresh);
-    } catch {
-      return this.memIntents;
-    }
+    return readIntents(this.storeKey, this.saved.address, this.memIntents);
   }
 
   private saveIntents(list: Intent[]): void {
     this.memIntents = list;
-    try {
-      if (list.length) localStorage.setItem(this.intentsKey, JSON.stringify(list));
-      else localStorage.removeItem(this.intentsKey);
-      localStorage.removeItem(this.legacyPendingKey);
-    } catch {
-      /* stockage indisponible : l'état reste en mémoire pour cet onglet */
-    }
+    writeIntents(this.storeKey, list);
     this.showIntents(list);
   }
 
@@ -1095,9 +426,20 @@ export class Hyperliquid {
    * impossible, l'intention reste (même après rechargement) et bloque les ordres d'ouverture. Un envoi qui ne fait que
    * réduire la position (tous ses ordres « réduisant seulement » : fermeture, stop, TP) n'est jamais bloqué.
    */
-  private async send(ex: ExchangeClient, params: Parameters<ExchangeClient['order']>[0], coin: string): Promise<unknown[]> {
+  private async send(
+    ex: ExchangeClient,
+    params: Parameters<ExchangeClient['order']>[0],
+    coin: string,
+    beforeSend?: () => Promise<void>,
+  ): Promise<unknown[]> {
     const reducing = params.orders.every(o => o.r);
     if (!reducing) await this.settleIntents();
+    // Étape préalable à l'envoi (levier du ticket, audit M-08) : après tous les contrôles, dans la même section
+    // critique ; un refus plus haut la laisse sans effet chez Hyperliquid.
+    if (beforeSend) {
+      this.guard(coin);
+      await beforeSend();
+    }
     const cloid = params.orders[0]?.c as `0x${string}` | undefined;
     // Dernier contrôle, après toutes les attentes : l'actif visé est toujours celui du compte et celui affiché.
     this.guard(coin);
@@ -1279,7 +621,14 @@ export class Hyperliquid {
     if (!eth) throw new Error('MetaMask n’est pas détecté dans ce navigateur.');
     const owner = await this.connectedOwner(eth);
     const old = this.saved.agentAddress ?? (this.saved.agentKey ? privateKeyToAccount(this.saved.agentKey).address : null);
+    const acct = this.acctGen;
     const replacement = await revokeNamedAgent(new ExchangeClient({ transport: this.http, wallet: metamaskSigner(eth, owner) }));
+    // Compte suivi changé pendant la signature (audit M-09) : la clé et les métadonnées d'ici sont celles du nouveau
+    // compte, elles ne sont pas effacées (et « Oublier » s'arrête là, sans oublier le nouveau compte).
+    if (acct !== this.acctGen)
+      throw new Error(
+        `Révocation signée pour l’ancien compte ${shortAddr(owner)}, mais le compte suivi a changé pendant la signature : rien n’a été effacé ici. Vérifie la liste des agents de ${shortAddr(owner)} sur app.hyperliquid.xyz (More, API).`,
+      );
     this.saved = { address: this.saved.address };
     this.sealed = null;
     this.keptBox = null;
@@ -1318,8 +667,8 @@ export class Hyperliquid {
     this.verifiedAgent = null;
     this.store();
     try {
-      localStorage.removeItem(this.intentsKey);
-      localStorage.removeItem(this.legacyPendingKey);
+      localStorage.removeItem(intentsKey(this.storeKey));
+      localStorage.removeItem(legacyPendingKey(this.storeKey));
     } catch {
       /* rien */
     }
@@ -1974,7 +1323,14 @@ export class Hyperliquid {
     const wallet = metamaskSigner(eth, owner);
     const master = new ExchangeClient({ transport: this.http, wallet });
     const until = Date.now() + AGENT_TTL_MS;
+    // Compte suivi au moment de la signature (audit M-09) : s'il change pendant que MetaMask attend (autre onglet,
+    // « Oublier », autre compte saisi), la clé n'est écrite pour aucun des deux.
+    const acct = this.acctGen;
     await master.approveAgent({ agentAddress: agent.address, agentName: agentName(until) });
+    if (acct !== this.acctGen)
+      throw new Error(
+        `L’agent a été autorisé pour l’ancien compte ${shortAddr(owner)}, mais le compte suivi a changé pendant la signature : rien n’a été enregistré ici et sa clé est abandonnée (inutilisable, elle expire d’elle-même). Reviens sur le compte voulu et réactive le trading.`,
+      );
     // Signature acceptée : la nouvelle clé remplace l'ancienne, d'un seul tenant.
     this.saved = { address: owner, agentKey: key, agentAddress: agent.address, agentFor: owner, agentUntil: until };
     this.sealed = box ? { key, box } : null;
@@ -2085,6 +1441,19 @@ export class Hyperliquid {
       const { ex, asset } = this.ready(coin);
       await ex.updateLeverage({ asset: asset.index, isCross: cross, leverage: Math.round(leverage) }, this.expiry());
     });
+  }
+
+  /**
+   * Levier voulu pour une entrée (audit M-08), appliqué par `enterNow` juste avant l'envoi, après tous les contrôles
+   * et sous le même verrou que l'ordre. Rien à faire si une position est ouverte (c'est son levier qui vaut) ou si le
+   * levier et le mode de l'actif sont déjà ceux demandés.
+   */
+  private async entryLeverageNow(ex: ExchangeClient, asset: Asset, want: EntryLeverage | null | undefined): Promise<void> {
+    if (!want || this.state.position) return;
+    const t = this.state.trade;
+    if (t && t.leverage === want.leverage && t.cross === want.cross) return;
+    await ex.updateLeverage({ asset: asset.index, isCross: want.cross, leverage: Math.round(want.leverage) }, this.expiry());
+    void this.refreshAvailable();
   }
 
   /** `expectedMid` : prix montré dans la confirmation ; s'il est donné, un écart de plus de `CONFIRM_DRIFT` refuse l'ordre. */
@@ -2344,23 +1713,17 @@ export class Hyperliquid {
    *    protègent pas une exécution partielle, et annuler le reste de l'entrée les annule).
    *  - Marché : l'entrée, puis, sur la taille de la position obtenue, le TP en ordre limite réduisant seulement et
    *    le SL déclenché. Si l'un des deux échoue, l'entrée reste faite et l'erreur est remontée.
+   *  - `leverage` : levier et mode du ticket, appliqués dans la même section critique que l'ordre, juste avant l'envoi
+   *    (audit M-08) : un ordre refusé avant l'envoi (prix bougé, frais d'interface, ordre en suspens, relecture
+   *    impossible) laisse le levier inchangé. Sans effet pour un ordre « réduire seulement ».
    */
-  enter(
-    coin: string,
-    buy: boolean,
-    size: number,
-    opts: { price?: number | null; tp?: number | null; sl?: number | null; reduce?: boolean; expectedMid?: number | null },
-  ): Promise<string> {
+  enter(coin: string, buy: boolean, size: number, opts: EntryOptions): Promise<string> {
     return this.act(false, () => this.enterNow(coin, buy, size, opts));
   }
 
-  private async enterNow(
-    coin: string,
-    buy: boolean,
-    size: number,
-    opts: { price?: number | null; tp?: number | null; sl?: number | null; reduce?: boolean; expectedMid?: number | null },
-  ): Promise<string> {
+  private async enterNow(coin: string, buy: boolean, size: number, opts: EntryOptions): Promise<string> {
     const { ex, asset } = this.ready(coin);
+    const leverage = () => this.entryLeverageNow(ex, asset, opts.leverage);
     if (opts.reduce) {
       // Réduire seulement : ni TP ni SL rattachés, l'ordre ne peut que diminuer la position.
       if (opts.price) {
@@ -2386,7 +1749,12 @@ export class Hyperliquid {
         const t = orders[i].t;
         orders[i] = { ...orders[i], c: protectCloid('trigger' in t ? t.trigger.tpsl : 'tp') };
       }
-      const statuses = await this.send(ex, { orders, grouping: orders.length > 1 ? 'normalTpsl' : 'na', ...this.builderParam() }, coin);
+      const statuses = await this.send(
+        ex,
+        { orders, grouping: orders.length > 1 ? 'normalTpsl' : 'na', ...this.builderParam() },
+        coin,
+        leverage,
+      );
       return describeBracket(statuses, orders.length, !!opts.tp, !!opts.sl);
     }
     await this.fresh();
@@ -2408,6 +1776,7 @@ export class Hyperliquid {
         ...this.builderParam(),
       },
       coin,
+      leverage,
     );
     const text = describe(st);
     // Réponse perdue puis ordre retrouvé : la taille exécutée n'est pas connue, les protections ne sont pas posées
@@ -2497,149 +1866,4 @@ export class Hyperliquid {
   get szDecimals(): number {
     return this.asset?.szDecimals ?? 5;
   }
-}
-
-/**
- * Signataire MetaMask pour l'autorisation de l'agent. viem refuse, avant même de solliciter le portefeuille, le
- * nom de type « HyperliquidTransaction:ApproveAgent » qu'exige Hyperliquid (deux-points interdit par sa
- * validation) : la signature est donc demandée directement à MetaMask (eth_signTypedData_v4), comme le fait
- * l'interface d'Hyperliquid. L'objet a la forme d'un compte viem JSON-RPC, reconnue par le SDK.
- */
-export function metamaskSigner(eth: EIP1193Provider, owner: string) {
-  return {
-    async signTypedData(args: { domain: unknown; types: unknown; primaryType: string; message: unknown }): Promise<`0x${string}`> {
-      const json = JSON.stringify(args, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
-      return (await eth.request({ method: 'eth_signTypedData_v4', params: [owner as `0x${string}`, json] } as never)) as `0x${string}`;
-    },
-    async getAddresses(): Promise<`0x${string}`[]> {
-      return [owner as `0x${string}`];
-    },
-    async getChainId(): Promise<number> {
-      return parseInt((await eth.request({ method: 'eth_chainId' })) as string, 16);
-    },
-  };
-}
-
-type Permission = { parentCapability?: string; caveats?: { type?: string; value?: unknown }[] };
-
-/** Comptes listés dans une permission eth_accounts de MetaMask (caveat restrictReturnedAccounts). */
-export function permittedIn(perms: unknown): string[] {
-  if (!Array.isArray(perms)) return [];
-  const out: string[] = [];
-  for (const p of perms as Permission[]) {
-    if (p?.parentCapability !== 'eth_accounts') continue;
-    for (const c of p.caveats ?? []) {
-      if (c?.type !== 'restrictReturnedAccounts' || !Array.isArray(c.value)) continue;
-      for (const a of c.value) if (typeof a === 'string' && /^0x[0-9a-fA-F]{40}$/.test(a)) out.push(getAddress(a));
-    }
-  }
-  return out;
-}
-
-/**
- * Ouvre le choix des comptes de MetaMask (wallet_requestPermissions), pour connecter à la page un compte de plus,
- * et renvoie les comptes autorisés qu'il annonce. Vide si le portefeuille ne le permet pas ; un refus est remonté.
- */
-async function pickAccounts(eth: EIP1193Provider): Promise<string[]> {
-  try {
-    return permittedIn(await eth.request({ method: 'wallet_requestPermissions', params: [{ eth_accounts: {} }] } as never));
-  } catch (err) {
-    if (/User rejected|denied/i.test(message(err))) throw err;
-    return [];
-  }
-}
-
-/**
- * Tous les comptes connectés à la page. MetaMask ne renvoie souvent par eth_accounts que le compte affiché ;
- * la liste complète est dans ses permissions. Le compte affiché vient en premier.
- */
-async function permittedAccounts(eth: EIP1193Provider, extra: string[] = []): Promise<string[]> {
-  const shown = ((await eth.request({ method: 'eth_requestAccounts' })) as string[]).map(a => getAddress(a));
-  let granted: string[] = [];
-  try {
-    granted = permittedIn(await eth.request({ method: 'wallet_getPermissions' } as never));
-  } catch {
-    /* portefeuille sans wallet_getPermissions : le compte affiché seul */
-  }
-  return [...new Set([...shown, ...extra, ...granted])];
-}
-
-/**
- * Audit S-02 (23/11/2026) : verdict sur les comptes que MetaMask expose à la page (`accountsChanged`) au regard du
- * compte suivi. `ok` : pas de compte suivi, ou il est exposé ; `other` : seulement d'autres comptes ; `none` : aucun
- * compte (MetaMask verrouillé, page déconnectée).
- */
-export function walletVerdict(accounts: unknown, followed: string | null): 'ok' | 'other' | 'none' {
-  if (!followed) return 'ok';
-  const list = Array.isArray(accounts) ? accounts.filter((a): a is string => typeof a === 'string').map(a => a.toLowerCase()) : [];
-  if (!list.length) return 'none';
-  return list.includes(followed.toLowerCase()) ? 'ok' : 'other';
-}
-
-function provider(): (EIP1193Provider & { on?: (event: string, cb: (accounts: string[]) => void) => void }) | undefined {
-  return (window as unknown as { ethereum?: EIP1193Provider & { on?: (event: string, cb: (accounts: string[]) => void) => void } })
-    .ethereum;
-}
-
-/**
- * Issue d'une entrée limite groupée avec ses protections : l'entrée d'abord (son refus est une erreur), puis
- * chaque protection, nommée. Une protection refusée n'efface jamais l'entrée acceptée.
- */
-export function describeBracket(statuses: unknown[], sent: number, tp: boolean, sl: boolean): string {
-  const text = describe(statuses[0]);
-  if (sent < 2) return text;
-  const names = [tp ? 'TP' : '', sl ? 'SL' : ''].filter(Boolean);
-  if (statuses.length < sent) return `${text}. ${names.join(' et ')} à vérifier dans la liste des ordres (réponse incomplète)`;
-  const refused: string[] = [];
-  statuses.slice(1).forEach((st, i) => {
-    try {
-      describe(st);
-    } catch (err) {
-      refused.push(`${names[i] ?? 'protection'} REFUSÉ (${message(err)})`);
-    }
-  });
-  if (refused.length)
-    return `${text}, mais ${refused.join(' ; ')} : l’entrée est bien en place, ne la renvoie pas ; pose la protection depuis le graphique`;
-  // Rattachés à une entrée qui attend au carnet, TP / SL sont EN ATTENTE : Hyperliquid ne les place qu'une fois
-  // l'entrée entièrement exécutée (23/11/2026). Ne jamais les annoncer comme une protection active avant.
-  const entryFilled = !!statuses[0] && typeof statuses[0] === 'object' && 'filled' in (statuses[0] as object);
-  return entryFilled
-    ? `${text}, avec ${names.join(' et ')} rattachés`
-    : `${text}, avec ${names.join(' et ')} rattachés EN ATTENTE : actifs seulement quand l’entrée sera entièrement exécutée (une exécution partielle n’est pas protégée)`;
-}
-
-function describe(status: unknown): string {
-  if (status && typeof status === 'object') {
-    if ('found' in status) return (status as { found: string }).found;
-    if ('filled' in status) {
-      const f = (status as { filled: { totalSz: string; avgPx: string } }).filled;
-      const px = +f.avgPx;
-      return `Exécuté : ${(+f.totalSz * px).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} USDC à ${px.toLocaleString('fr-FR')}`;
-    }
-    if ('resting' in status) return 'Ordre placé dans le carnet';
-    if ('error' in status) throw new Error((status as { error: string }).error);
-  }
-  if (status === 'waitingForTrigger') return 'Ordre conditionnel en place';
-  if (status === 'waitingForFill') return 'Ordre en attente d’exécution';
-  return 'Ordre envoyé';
-}
-
-export function message(err: unknown): string {
-  // Les erreurs de viem et du SDK portent le détail dans `shortMessage` ou `details`, et la cause en dessous.
-  const e = err as { shortMessage?: string; details?: string; message?: string; cause?: unknown } | undefined;
-  const inner = e?.cause as { message?: string } | undefined;
-  const text = [e?.shortMessage ?? e?.message ?? String(err), e?.details, inner?.message]
-    .filter((x, i, all) => x && all.indexOf(x) === i)
-    .join(' — ');
-  if (/User rejected|denied/i.test(text)) return 'signature refusée dans MetaMask';
-  if (/deposit/i.test(text))
-    return `ce compte n’a encore rien déposé sur Hyperliquid : un premier dépôt est nécessaire avant d’autoriser un agent (${text})`;
-  if (/chainId|chain id/i.test(text)) return `réseau de MetaMask refusé (${text}) : passe MetaMask sur Arbitrum One puis réessaie`;
-  if (/does not exist|API wallet/i.test(text)) return 'portefeuille agent inconnu d’Hyperliquid : réactive le trading';
-  if (/Insufficient margin/i.test(text)) return 'marge insuffisante';
-  // Action reçue après son échéance (`expiresAfter`) : refusée, donc sans effet (23/11/2026).
-  if (/expire|stale/i.test(text) && !/agent/i.test(text))
-    return `action arrivée après son échéance, refusée par Hyperliquid sans effet (horloge de l’ordinateur décalée ?) : ${text}`;
-  if (/could not immediately match/i.test(text)) return 'aucune contrepartie dans la tolérance de prix (1 %)';
-  return text;
 }

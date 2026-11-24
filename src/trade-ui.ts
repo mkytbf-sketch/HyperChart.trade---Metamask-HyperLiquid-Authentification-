@@ -280,14 +280,6 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
     }
   }
 
-  /** Levier du ticket appliqué juste avant l'ordre, sauf position ouverte (c'est alors le sien qui vaut). */
-  const applyLeverage = async (hl: Hyperliquid, coin: string) => {
-    if (!hl.state.position && (hl.state.trade?.leverage !== ticket.leverage || hl.state.trade?.cross !== ticket.cross)) {
-      await hl.setLeverage(coin, ticket.leverage, ticket.cross);
-      void hl.refreshAvailable();
-    }
-  };
-
   // Calculs du ticket : fonctions pures de `trade-calc.ts`, appliquées au ticket et au compte du moment.
   const effectiveLeverage = (hl: Hyperliquid) => calc.effectiveLeverage(ticket, hl.state.position);
   const entryPrice = (hl: Hyperliquid) => calc.entryPrice(ticket, hl.state.mid);
@@ -324,7 +316,6 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
     if (d.far && (!(await confirm(hl, d.far)) || !stillOn(hl, coin))) return;
     const reduce = ticket.reduce;
     await run(hl, d.label, async () => {
-      await applyLeverage(hl, coin);
       // Ordre parti : les prix du ticket sont vidés, pour ne pas resservir par mégarde.
       const sent = () => {
         ticket.tp = ticket.sl = null;
@@ -332,7 +323,16 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
       };
       try {
         // Au marché, le prix confirmé accompagne l'ordre : s'il a bougé de plus de 0,5 % d'ici l'envoi, refus.
-        const text = await hl.enter(coin, buy, pl.size, { price: limit ? entry : null, tp, sl, reduce, expectedMid: limit ? null : entry });
+        // Le levier du ticket est appliqué par `enter`, sous le même verrou, juste avant l'envoi (audit M-08) : un
+        // ordre refusé avant l'envoi le laisse inchangé ; sans effet si une position est ouverte (son levier vaut).
+        const text = await hl.enter(coin, buy, pl.size, {
+          price: limit ? entry : null,
+          tp,
+          sl,
+          reduce,
+          expectedMid: limit ? null : entry,
+          leverage: { leverage: ticket.leverage, cross: ticket.cross },
+        });
         sent();
         return text;
       } catch (err) {
@@ -869,6 +869,7 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
     render();
     let failure: unknown = null;
     let revoked = '';
+    const address = hl.state.address;
     try {
       revoked = (await hl.revokeAgent()).text;
     } catch (err) {
@@ -877,6 +878,12 @@ export function setupTrading(chart: ChartView, toast: (title: string, body: stri
     }
     busy = false;
     render();
+    // Compte suivi changé pendant la signature (audit M-09) : le nouveau compte n'est pas oublié à sa place.
+    if (hl.state.address !== address)
+      return toast(
+        `${prefix(hl)}Compte non oublié`,
+        failure === null ? 'Le compte suivi a changé pendant la signature.' : message(failure),
+      );
     if (failure === null) {
       await hl.forget().then(done);
       return toast(`${prefix(hl)}Compte oublié`, `${revoked} Clé effacée de ce navigateur.`);
